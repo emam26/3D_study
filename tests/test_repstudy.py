@@ -25,7 +25,8 @@ def test_backprojection_coordinates():
 
 def test_all_core_representations_render_and_label():
     item = sample()
-    for name in ("pointcloud", "surfel", "mesh", "voxel", "tsdf", "superpoint"):
+    for name in ("pointcloud", "surfel", "mesh", "voxel", "tsdf", "superpoint",
+                 "graph", "octree", "descriptor"):
         result = assign_oracle_labels(build_representation(name, item), item)
         rendered = render_original_view(result, item)
         assert rendered.semantic_map.shape == item.semantic_gt.shape

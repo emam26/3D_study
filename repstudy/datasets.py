@@ -61,7 +61,7 @@ class SUNRGBDAdapter:
 
     name = "sunrgbd"
 
-    def __init__(self, root, split="all", label_set="37", ignore_labels=(0,)):
+    def __init__(self, root, split="all", label_set="37", ignore_labels=(0,), max_depth_m=8.0):
         self.root = Path(root)
         self.dataset_root = self.root / "SUNRGBD" if (self.root / "SUNRGBD").exists() else self.root
         toolbox = self.root / "SUNRGBDtoolbox" / "Metadata"
@@ -78,6 +78,7 @@ class SUNRGBDAdapter:
             raise ValueError("This adapter currently supports the official 37-class masks only")
         self.split = split
         self.ignore_labels = tuple(ignore_labels)
+        self.max_depth_m = float(max_depth_m)
         self.metadata = loadmat(self.metadata_path, squeeze_me=True, struct_as_record=False)["SUNRGBDMeta"]
         names = loadmat(toolbox / "seg37list.mat", squeeze_me=True, struct_as_record=False)["seg37list"]
         self.class_names = [str(value) for value in np.asarray(names).reshape(-1)]
@@ -114,7 +115,14 @@ class SUNRGBDAdapter:
         record = self._record(sample_id)
         item = record["item"]
         rgb = np.asarray(Image.open(record["rgb"]).convert("RGB"), dtype=np.uint8)
-        depth = np.asarray(Image.open(record["depth"]), dtype=np.float32) / 1000.0
+        raw_depth = np.asarray(Image.open(record["depth"]), dtype=np.uint16)
+        # Official SUN RGB-D MATLAB toolbox decoding:
+        # bitor(bitshift(depthVis,-3), bitshift(depthVis,13))/1000.
+        depth_code = np.bitwise_or(np.right_shift(raw_depth, 3),
+                                   np.left_shift(raw_depth.astype(np.uint32), 13).astype(np.uint16))
+        decoded_depth = depth_code.astype(np.float32) / 1000.0
+        valid_depth = np.isfinite(decoded_depth) & (decoded_depth > 0) & (decoded_depth <= self.max_depth_m)
+        depth = np.minimum(decoded_depth, self.max_depth_m)
         with h5py.File(self.segmentation_path, "r") as handle:
             reference = handle["SUNRGBD2Dseg/seglabel"][record["index"], 0]
             label = np.asarray(handle[reference], dtype=np.int32).T
@@ -129,10 +137,11 @@ class SUNRGBDAdapter:
         intrinsics = np.asarray(item.K, dtype=np.float32)
         return RGBDSample(
             sample_id, self.name, rgb, depth, label, intrinsics,
-            valid_depth_mask=np.isfinite(depth) & (depth > 0), valid_label_mask=valid_label,
+            valid_depth_mask=valid_depth, valid_label_mask=valid_label,
             metadata={"split": self.split, "sensor_type": str(item.sensorType),
-                      "depth_scale": "millimetres_to_metres", "class_names": self.class_names,
-                      "rgb_path": str(record["rgb"]), "depth_path": str(record["depth"])},
+                      "depth_scale": "sunrgbd_packed_13bit_to_metres", "class_names": self.class_names,
+                      "rgb_path": str(record["rgb"]), "depth_path": str(record["depth"]),
+                      "max_depth_m": self.max_depth_m},
         )
 
 
@@ -144,6 +153,6 @@ def build_adapter(config):
         )
     if config["name"].lower() in ("sun", "sunrgbd", "sun_rgbd"):
         return SUNRGBDAdapter(config["root"], config.get("split", "all"),
-                              config.get("label_set", "37"), config.get("ignore_labels", [0]))
+                              config.get("label_set", "37"), config.get("ignore_labels", [0]),
+                              config.get("max_depth_m", 8.0))
     raise ValueError(f"Unsupported dataset: {config['name']}")
-

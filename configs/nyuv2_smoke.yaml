@@ -34,5 +34,19 @@ representations:
   superpoint:
     enabled: true
     target_regions: 1000
+  graph:
+    enabled: true
+    budget: 2500
+    k: 8
+    seed: 42
+  octree:
+    enabled: true
+    max_depth: 7
+    max_points_per_leaf: 128
+  descriptor:
+    enabled: true
+    budget: 5000
+    k: 16
+    seed: 42
 
 views: [original, left_oblique, right_oblique, elevated]

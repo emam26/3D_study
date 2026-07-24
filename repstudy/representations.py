@@ -26,6 +26,24 @@ def _sample_indices(count: int, budget: int | None, seed: int) -> np.ndarray:
     return np.sort(rng.choice(count, budget, replace=False))
 
 
+def _knn_indices(points: np.ndarray, k: int) -> np.ndarray:
+    """Return deterministic k-nearest-neighbour indices for each point."""
+    points = np.asarray(points, dtype=np.float32)
+    if len(points) <= 1:
+        return np.zeros((len(points), 0), dtype=np.int32)
+    k = min(max(int(k), 1), max(len(points) - 1, 1))
+    try:
+        from scipy.spatial import cKDTree
+        _, indices = cKDTree(points).query(points, k=k + 1)
+        return np.asarray(indices[:, 1:], dtype=np.int32)
+    except Exception:
+        # The pilot requirements include SciPy. This fallback keeps the core
+        # representation usable in minimal environments and small tests.
+        distances = np.sum((points[:, None] - points[None, :]) ** 2, axis=-1)
+        np.fill_diagonal(distances, np.inf)
+        return np.argpartition(distances, kth=min(k - 1, len(points) - 1), axis=1)[:, :k].astype(np.int32)
+
+
 class Original2DControl(BaseRepresentation):
     name = "original_2d"
 
@@ -113,7 +131,7 @@ class PartialMesh(BaseRepresentation):
         geometry = vertices.reshape(-1, 3, 3).mean(1)
         return RepresentationResult(
             self.name, geometry, members, np.ones(len(geometry), bool),
-            {"faces": np.asarray(faces, dtype=np.int32)}, None,
+            {"vertices": vertices, "faces": np.asarray(faces, dtype=np.int32)}, None,
             {"max_depth_jump_m": max_jump, "max_edge_length_m": max_edge, "max_normal_angle_deg": angle},
         )
 
@@ -217,6 +235,130 @@ class SuperpointRegions(BaseRepresentation):
         )
 
 
+class PointGraph(BaseRepresentation):
+    """A kNN graph over a deterministic point-cloud sample."""
+
+    name = "graph"
+
+    def build(self, sample, config=None):
+        config = config or {}
+        xyz, pixels = backproject(sample)
+        indices = _sample_indices(len(xyz), config.get("budget", 2500), config.get("seed", 42))
+        points = xyz[indices]
+        members = [p[None] for p in pixels[indices]]
+        k = int(config.get("k", 8))
+        neighbours = _knn_indices(points, k)
+        edge_set = set()
+        for source, row in enumerate(neighbours):
+            for target in row:
+                if source == int(target):
+                    continue
+                edge_set.add(tuple(sorted((source, int(target)))))
+        edges = np.asarray(sorted(edge_set), dtype=np.int32).reshape(-1, 2)
+        attrs = geometry_attributes(sample)
+        normals = attrs["normals_image"][pixels[indices, 0], pixels[indices, 1]]
+        rgb = sample.rgb[pixels[indices, 0], pixels[indices, 1]]
+        degree = np.bincount(edges.reshape(-1), minlength=len(points)).astype(np.float32) if len(edges) else np.zeros(len(points), np.float32)
+        return RepresentationResult(
+            self.name, points, members, np.ones(len(points), bool),
+            {"rgb": rgb, "normals": normals, "degree": degree}, edges,
+            {"budget": config.get("budget", 2500), "k": k, "sampling": "seeded_uniform"},
+        )
+
+
+class OctreeLeaves(BaseRepresentation):
+    """Adaptive octree leaves over the complete visible point cloud."""
+
+    name = "octree"
+
+    def build(self, sample, config=None):
+        config = config or {}
+        xyz, pixels = backproject(sample)
+        if len(xyz) == 0:
+            return RepresentationResult(self.name, np.zeros((0, 3), np.float32), [], np.zeros(0, bool))
+        max_depth = max(1, int(config.get("max_depth", 7)))
+        max_points = max(1, int(config.get("max_points_per_leaf", 128)))
+        mins = xyz.min(axis=0).astype(np.float32)
+        side = float(np.max(xyz.max(axis=0) - mins))
+        side = max(side, 1e-3)
+        # A tiny pad keeps points on the maximum boundary inside the root.
+        pad = max(side * 1e-5, 1e-5)
+        root_min = mins - pad
+        root_side = side + 2 * pad
+        stack = [(np.arange(len(xyz), dtype=np.int32), root_min, root_side, 0)]
+        leaves = []
+        while stack:
+            idx, origin, cell_side, depth = stack.pop()
+            if len(idx) <= max_points or depth >= max_depth:
+                leaves.append((idx, origin.copy(), float(cell_side), depth))
+                continue
+            half = cell_side / 2.0
+            midpoint = origin + half
+            bits = (xyz[idx] >= midpoint).astype(np.int8)
+            child_ids = bits[:, 0] + 2 * bits[:, 1] + 4 * bits[:, 2]
+            for child in range(7, -1, -1):
+                child_mask = child_ids == child
+                if np.any(child_mask):
+                    offset = bits[child_mask][0].astype(np.float32) * half
+                    stack.append((idx[child_mask], origin + offset, half, depth + 1))
+        # Stable order makes summaries and visual comparisons reproducible.
+        leaves.sort(key=lambda item: (item[3], float(item[1][0]), float(item[1][1]), float(item[1][2])))
+        geometry = [origin + side_len / 2.0 for _, origin, side_len, _ in leaves]
+        members = [pixels[idx] for idx, _, _, _ in leaves]
+        bounds_min = np.asarray([origin for _, origin, _, _ in leaves], dtype=np.float32)
+        bounds_max = np.asarray([origin + side_len for _, origin, side_len, _ in leaves], dtype=np.float32)
+        levels = np.asarray([depth for _, _, _, depth in leaves], dtype=np.int32)
+        counts = np.asarray([len(idx) for idx, _, _, _ in leaves], dtype=np.int32)
+        return RepresentationResult(
+            self.name, np.asarray(geometry, np.float32), members, np.ones(len(geometry), bool),
+            {"bounds_min": bounds_min, "bounds_max": bounds_max, "level": levels, "point_count": counts}, None,
+            {"max_depth": max_depth, "max_points_per_leaf": max_points, "root_min": root_min, "root_side_m": root_side},
+        )
+
+
+class GeometricDescriptors(BaseRepresentation):
+    """Local geometry descriptors attached to sampled visible-surface points."""
+
+    name = "descriptor"
+
+    def build(self, sample, config=None):
+        config = config or {}
+        xyz, pixels = backproject(sample)
+        indices = _sample_indices(len(xyz), config.get("budget", 5000), config.get("seed", 42))
+        points = xyz[indices]
+        members = [p[None] for p in pixels[indices]]
+        if len(points) <= 1:
+            descriptor = np.zeros((len(points), 10), dtype=np.float32)
+        else:
+            neighbours = _knn_indices(points, int(config.get("k", 16)))
+            descriptor_rows = []
+            rgb_pixels = sample.rgb[pixels[indices, 0], pixels[indices, 1]].astype(np.float32)
+            rgb_pixels /= 255.0 if rgb_pixels.max(initial=0) > 1.5 else 1.0
+            for point_index, neighbour_ids in enumerate(neighbours):
+                local = points[neighbour_ids] - points[point_index]
+                covariance = (local.T @ local) / max(len(local), 1)
+                eigenvalues = np.sort(np.maximum(np.linalg.eigvalsh(covariance), 0))[::-1]
+                trace = float(eigenvalues.sum())
+                normalized = eigenvalues / max(trace, 1e-8)
+                l1, l2, l3 = normalized
+                mean_distance = float(np.linalg.norm(local, axis=1).mean())
+                density = 1.0 / max(mean_distance, 1e-4)
+                descriptor_rows.append(np.concatenate([
+                    normalized, [((l1 - l2) / max(l1, 1e-8)), ((l2 - l3) / max(l1, 1e-8)),
+                    l3, density, *rgb_pixels[point_index]],
+                ]))
+            descriptor = np.asarray(descriptor_rows, dtype=np.float32)
+        attrs = geometry_attributes(sample)
+        normals = attrs["normals_image"][pixels[indices, 0], pixels[indices, 1]]
+        scalar = descriptor[:, 2] if len(descriptor) else np.zeros(0, np.float32)
+        return RepresentationResult(
+            self.name, points, members, np.ones(len(points), bool),
+            {"descriptor": descriptor, "descriptor_scalar": scalar, "normals": normals}, None,
+            {"budget": config.get("budget", 5000), "k": int(config.get("k", 16)),
+             "descriptor_layout": ["lambda1", "lambda2", "lambda3", "linearity", "planarity", "scattering", "density", "r", "g", "b"]},
+        )
+
+
 REPRESENTATIONS = {
     "original_2d": Original2DControl,
     "pointcloud": OrganizedPointCloud,
@@ -225,6 +367,9 @@ REPRESENTATIONS = {
     "voxel": SparseVoxels,
     "tsdf": SparseTSDF,
     "superpoint": SuperpointRegions,
+    "graph": PointGraph,
+    "octree": OctreeLeaves,
+    "descriptor": GeometricDescriptors,
 }
 
 

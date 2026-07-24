@@ -5,8 +5,8 @@ representations on NYUv2 and SUN RGB-D. It is not a segmentation model and does
 not train a neural network.
 
 The study will compare organized point clouds, surfels, partial meshes, sparse
-voxels, single-view sparse TSDFs, superpoint graphs, and deterministic
-multiview projections. Ground truth is used only for oracle labeling and
+voxels, single-view sparse TSDFs, superpoint regions, kNN graphs, adaptive
+octrees, local geometric descriptors, and deterministic multiview projections. Ground truth is used only for oracle labeling and
 evaluation—not to construct the primary geometry.
 
 ## Current status
@@ -14,8 +14,9 @@ evaluation—not to construct the primary geometry.
 The first deterministic pipeline is implemented and smoke-tested on NYUv2:
 backprojection, organized point clouds, surfels, partial meshes, sparse
 voxels, single-view sparse TSDFs, superpoint regions, oracle labels,
-z-buffer rendering, coverage-aware semantic metrics, boundary metrics, and
-virtual-camera projections. The fixed pilot study uses 10 images from each
+z-buffer rendering, coverage-aware semantic metrics, boundary metrics, kNN
+graphs, adaptive octrees, local descriptors, and virtual-camera projections.
+The fixed pilot study uses 10 images from each
 dataset, with no full-dataset training or sweep.
 
 ## Run the study
@@ -32,6 +33,25 @@ Each configuration processes 10 images. The runner writes one directory per
 sample plus `study_summary.json` and `study_summary.csv`.
 Afterward, open `notebooks/02_batch_visualization_overview.ipynb` to create
 one six-panel overview image for every sample.
+
+The two raw-geometry grids are saved as:
+
+```text
+outputs/nyuv2/nyuv2_representation_smoke/3d_representation_grid.png
+outputs/sunrgbd/sunrgbd_representation_smoke/3d_representation_grid.png
+```
+
+They can also be viewed together from
+`notebooks/03_raw_3d_representation_grids.ipynb`.
+
+The matching 2D oracle-projection grids are saved as:
+
+```text
+outputs/nyuv2/nyuv2_representation_smoke/2d_representation_grid.png
+outputs/sunrgbd/sunrgbd_representation_smoke/2d_representation_grid.png
+```
+
+Use `notebooks/04_2d_representation_grids.ipynb` to view them together.
 Use `--max-samples 1` for a quick check, `--sample-id 00001` for a specific
 frame, and `--overwrite` to recompute an existing result.
 

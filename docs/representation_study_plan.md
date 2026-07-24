@@ -21,8 +21,9 @@ cannot appear strong by evaluating only its easiest pixels.
    NYUv2 validation, and synthetic integration tests.
 2. **Complete:** backprojection, point cloud, voxel, mesh, oracle labels,
    z-buffer rendering, and coverage-aware semantic metrics.
-3. **Complete:** surfels, single-view sparse TSDF, superpoints, and
-   deterministic virtual-camera projections.
+3. **Complete:** surfels, single-view sparse TSDF, superpoints, kNN graphs,
+   adaptive octrees, local geometric descriptors, and deterministic
+   virtual-camera projections.
 4. **Complete:** headless visualization panels, compressed map exports, and
    multi-sample aggregation for the fixed 10-image pilots.
 5. **In progress:** rate-distortion tables and cross-dataset analysis. Both
