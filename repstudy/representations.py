@@ -148,16 +148,28 @@ class SparseTSDF(BaseRepresentation):
         config = config or {}
         size = float(config.get("voxel_size_m", 0.04))
         truncation = float(config.get("truncation_multiplier", 4.0)) * size
+        ray_stride = max(1, int(config.get("ray_stride", 1)))
         xyz, pixels = backproject(sample)
         cells: dict[tuple[int, int, int], dict[str, Any]] = {}
-        origin = np.zeros(3, dtype=np.float32)
+        # Free-space integration is sampled deterministically for speed. Every
+        # observed surface point is still retained below, so this does not
+        # change the visible surface support or oracle coverage. Key generation
+        # is batched across rays instead of constructing one linspace per pixel.
+        ray_points = xyz[::ray_stride]
+        distances = np.linalg.norm(ray_points, axis=1)
+        ray_steps = np.maximum(1, ((np.maximum(distances - truncation, 0) / size)).astype(np.int32))
+        free_keys = []
+        for step in range(int(ray_steps.max(initial=1))):
+            active = ray_steps > step
+            if not np.any(active):
+                continue
+            alpha = (step / ray_steps[active]).astype(np.float32)
+            locations = ray_points[active] * alpha[:, None]
+            free_keys.append(np.floor(locations / size).astype(np.int32))
+        if free_keys:
+            for key in np.unique(np.concatenate(free_keys, axis=0), axis=0):
+                cells[tuple(key)] = {"state": "free", "members": []}
         for point, pixel in zip(xyz, pixels):
-            distance = np.linalg.norm(point)
-            steps = max(1, int(max(distance - truncation, 0) / size))
-            for alpha in np.linspace(0, 1, steps, endpoint=False):
-                location = point * alpha
-                key = tuple(np.floor(location / size).astype(np.int32))
-                cells.setdefault(key, {"state": "free", "members": []})
             key = tuple(np.floor(point / size).astype(np.int32))
             cell = cells.setdefault(key, {"state": "surface", "members": []})
             cell["state"] = "surface"; cell["members"].append(pixel)
@@ -170,7 +182,8 @@ class SparseTSDF(BaseRepresentation):
             self.name, np.asarray(geometry, np.float32), members,
             np.ones(len(geometry), bool),
             {"state": np.asarray(states), "tsdf": np.asarray(tsdf, np.float32)}, None,
-            {"voxel_size_m": size, "truncation_m": truncation, "unobserved_is_omitted": True},
+            {"voxel_size_m": size, "truncation_m": truncation, "ray_stride": ray_stride,
+             "unobserved_is_omitted": True},
         )
 
 
@@ -219,5 +232,3 @@ def build_representation(name: str, sample: RGBDSample, config=None) -> Represen
     if name not in REPRESENTATIONS:
         raise KeyError(f"Unknown representation {name}; choose from {sorted(REPRESENTATIONS)}")
     return REPRESENTATIONS[name]().build(sample, config)
-
-

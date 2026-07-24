@@ -1,12 +1,12 @@
 dataset:
-  name: nyuv2
-  root: data/nyu
-  split: test
-  ignore_labels: [0, 255]
-  intrinsics: [518.857901, 519.469611, 325.582449, 253.736166]
+  name: sunrgbd
+  root: data/sunRGB
+  split: all
+  label_set: "37"
+  ignore_labels: [0]
 
 study:
-  name: nyuv2_representation_smoke
+  name: sunrgbd_representation_smoke
   output_root: outputs
   seed: 42
   max_samples: 10
@@ -29,8 +29,9 @@ representations:
     voxel_size_m: 0.04
   tsdf:
     enabled: true
-    voxel_size_m: 0.04
-    truncation_multiplier: 4.0
+    voxel_size_m: 0.06
+    truncation_multiplier: 3.0
+    ray_stride: 8
   superpoint:
     enabled: true
     target_regions: 1000

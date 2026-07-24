@@ -23,11 +23,10 @@ cannot appear strong by evaluating only its easiest pixels.
    z-buffer rendering, and coverage-aware semantic metrics.
 3. **Complete:** surfels, single-view sparse TSDF, superpoints, and
    deterministic virtual-camera projections.
-4. **In progress:** headless visualization panels, compressed map exports,
-   multi-sample aggregation, and rate-distortion tables.
-5. **Pending:** fixed NYUv2/SUN RGB-D pilot manifests and cross-dataset
-   analysis. SUN RGB-D remains deliberately gated until its calibration
-   layout is specified.
+4. **Complete:** headless visualization panels, compressed map exports, and
+   multi-sample aggregation for the fixed 10-image pilots.
+5. **In progress:** rate-distortion tables and cross-dataset analysis. Both
+   NYUv2 and SUN RGB-D adapters are validated; no full-dataset run is planned.
 
 ## Coordinate convention
 
