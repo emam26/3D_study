@@ -32,7 +32,7 @@ python -m repstudy.run_study --config configs/sunrgbd_smoke.yaml
 Each configuration processes 10 images. The runner writes one directory per
 sample plus `study_summary.json` and `study_summary.csv`.
 Afterward, open `notebooks/02_batch_visualization_overview.ipynb` to create
-one six-panel overview image for every sample.
+one contact-sheet overview image for every sample.
 
 The two raw-geometry grids are saved as:
 
@@ -52,6 +52,15 @@ outputs/sunrgbd/sunrgbd_representation_smoke/2d_representation_grid.png
 ```
 
 Use `notebooks/04_2d_representation_grids.ipynb` to view them together.
+The camera, left/right oblique, and elevated projections for point clouds,
+graphs, octrees, and descriptors are saved as:
+
+```text
+outputs/nyuv2/nyuv2_representation_smoke/projection_grid.png
+outputs/sunrgbd/sunrgbd_representation_smoke/projection_grid.png
+```
+
+Use `notebooks/05_multiview_projection_grids.ipynb` to view those projections.
 Use `--max-samples 1` for a quick check, `--sample-id 00001` for a specific
 frame, and `--overwrite` to recompute an existing result.
 
