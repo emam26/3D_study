@@ -37,7 +37,7 @@ def make_overviews(output_root="outputs", datasets=("nyuv2", "sunrgbd"),
                 axis.axis("off")
             for index in range(len(panel_paths), rows * columns):
                 axes[index // columns][index % columns].axis("off")
-            figure.suptitle(f"{dataset} / sample {sample_dir.name}", fontsize=15)
+            figure.suptitle(f"{dataset}: representation panels", fontsize=15)
             figure.tight_layout()
             output = sample_dir / "all_representations_overview.png"
             figure.savefig(output, dpi=110)
