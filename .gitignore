@@ -1,0 +1,10 @@
+data/
+outputs/
+*.npz
+*.ply
+*.obj
+*.png
+*.jpg
+__pycache__/
+*.py[cod]
+.venv/

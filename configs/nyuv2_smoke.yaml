@@ -1,0 +1,38 @@
+dataset:
+  name: nyuv2
+  root: data/nyu
+  split: test
+  ignore_labels: [0, 255]
+  intrinsics: [518.857901, 519.469611, 325.582449, 253.736166]
+
+study:
+  name: nyuv2_representation_smoke
+  output_root: outputs
+  seed: 42
+  max_samples: 3
+
+representations:
+  pointcloud:
+    enabled: true
+    budget: 5000
+    seed: 42
+  surfel:
+    enabled: true
+    budget: 5000
+    radius_m: 0.02
+  mesh:
+    enabled: true
+    max_depth_jump_m: 0.05
+    max_edge_length_m: 0.25
+  voxel:
+    enabled: true
+    voxel_size_m: 0.04
+  tsdf:
+    enabled: true
+    voxel_size_m: 0.04
+    truncation_multiplier: 4.0
+  superpoint:
+    enabled: true
+    target_regions: 1000
+
+views: [original, left_oblique, right_oblique, elevated]
