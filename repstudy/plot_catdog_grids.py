@@ -33,9 +33,11 @@ def _clean_3d_axis(axis):
     title = axis.get_title()
     axis.set_proj_type("ortho")
     axis.dist = 5
+    axis.set_title("")
     axis.set_axis_off()
     axis.grid(False)
-    axis.set_title(title, pad=2)
+    axis.text2D(0.5, 1.02, title, transform=axis.transAxes,
+                ha="center", va="bottom", fontsize=10)
 
 
 def _mesh_plot(axis, vertices, faces, max_faces=12000):
@@ -202,13 +204,15 @@ def make_cat3d_grid(obj_path, output):
     axis = figure.add_subplot(2, 5, 1, projection="3d")
     _mesh_plot(axis, vertices, faces)
     axis.set_title("Original OBJ / CAD")
+    axis.set_xlabel("X"); axis.set_ylabel("Y"); axis.set_zlabel("Z")
     axis.view_init(elev=20, azim=-65)
-    _clean_3d_axis(axis)
+    axis.set_axis_on(); axis.grid(True); axis.dist = 4.5
     for index, name in enumerate(REPRESENTATION_NAMES, 2):
         axis = figure.add_subplot(2, 5, index, projection="3d")
         _draw_representation(axis, name, vertices, faces, asset)
+        axis.set_xlabel("X"); axis.set_ylabel("Y"); axis.set_zlabel("Z")
         axis.view_init(elev=20, azim=-65)
-        _clean_3d_axis(axis)
+        axis.set_axis_on(); axis.grid(True); axis.dist = 4.5
     figure.suptitle("Cat3D OBJ: original model plus nine 3D representations", fontsize=16, y=0.995)
     figure.tight_layout(rect=(0, 0, 1, 0.94), h_pad=2.4)
     output = Path(output); output.parent.mkdir(parents=True, exist_ok=True)

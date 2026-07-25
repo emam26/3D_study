@@ -28,6 +28,23 @@ The Cat3D figure contains the original OBJ/CAD model plus nine derived 3D
 representations. The separate `catDog.png` RGB scene is intentionally not
 included in the output atlas.
 
+## Additional analysis
+
+The pilot comparison below reports valid-depth mIoU, coverage, full-label mIoU,
+and construction time for all nine representations on both RGB-D datasets.
+
+<p align="center">
+  <img src="docs/figures/representation_benchmark.png" alt="NYUv2 and SUN RGB-D representation benchmark" width="100%">
+</p>
+
+For Cat3D, the additional figures show orthographic and perspective
+projections, depth and descriptor maps, surface normals, representation sizes,
+and the local descriptor distribution.
+
+| Cat3D projection analysis | Cat3D statistics |
+| --- | --- |
+| <img src="docs/figures/cat3d_projection_analysis.png" alt="Cat3D projection and geometric analysis" width="520"> | <img src="docs/figures/cat3d_statistics.png" alt="Cat3D representation statistics" width="520"> |
+
 The study will compare organized point clouds, surfels, partial meshes, sparse
 voxels, single-view sparse TSDFs, superpoint regions, kNN graphs, adaptive
 octrees, local geometric descriptors, and deterministic multiview projections. Ground truth is used only for oracle labeling and
@@ -97,6 +114,8 @@ surface TSDF, superpoint regions, graph, octree, and descriptor.
 
 ```text
 outputs/cat3d/cat3d_original_plus_9_grid.png
+outputs/cat3d/cat3d_projection_analysis.png
+outputs/cat3d/cat3d_statistics.png
 ```
 
 The separate `data/catDog.png` RGB scene is not included in this 3D output,
