@@ -1,4 +1,4 @@
-"""Create representation grids for the catDog RGB image and its OBJ asset."""
+"""Create 3D and 2D representation atlases for the Cat3D OBJ asset."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.collections import PolyCollection
+from matplotlib.ticker import MaxNLocator
 from PIL import Image
 
 from .obj_utils import (face_centers, face_normals, knn_graph, load_obj,
@@ -20,12 +21,19 @@ def _equal_axes(axis, points):
     if len(points) == 0:
         return
     mins, maxs = points.min(axis=0), points.max(axis=0)
-    center = (mins + maxs) / 2.0
-    radius = max(float((maxs - mins).max()) / 2.0, 1e-3)
-    axis.set_xlim(center[0] - radius, center[0] + radius)
-    axis.set_ylim(center[1] - radius, center[1] + radius)
-    axis.set_zlim(center[2] - radius, center[2] + radius)
-    axis.set_box_aspect((1, 1, 1))
+    # Tight, aspect-preserving limits make the tall, narrow Cat3D mesh fill
+    # each panel instead of leaving large empty cube margins around it.
+    span = np.maximum(maxs - mins, 1e-3)
+    pad = np.maximum(span * 0.06, 1e-3)
+    axis.set_xlim(mins[0] - pad[0], maxs[0] + pad[0])
+    axis.set_ylim(mins[1] - pad[1], maxs[1] + pad[1])
+    axis.set_zlim(mins[2] - pad[2], maxs[2] + pad[2])
+    axis.set_box_aspect(span)
+    for coordinate_axis in (axis.xaxis, axis.yaxis, axis.zaxis):
+        coordinate_axis.set_major_locator(MaxNLocator(nbins=3))
+    # The Cat3D mesh is very narrow in X; hiding only those numeric tick
+    # labels avoids collisions while retaining the X axis and coordinate box.
+    axis.set_xticklabels([])
 
 
 def _clean_3d_axis(axis):
@@ -206,15 +214,63 @@ def make_cat3d_grid(obj_path, output):
     axis.set_title("Original OBJ / CAD")
     axis.set_xlabel("X"); axis.set_ylabel("Y"); axis.set_zlabel("Z")
     axis.view_init(elev=20, azim=-65)
-    axis.set_axis_on(); axis.grid(True); axis.dist = 4.5
+    axis.set_axis_on(); axis.grid(True); axis.dist = 3.2
     for index, name in enumerate(REPRESENTATION_NAMES, 2):
         axis = figure.add_subplot(2, 5, index, projection="3d")
         _draw_representation(axis, name, vertices, faces, asset)
         axis.set_xlabel("X"); axis.set_ylabel("Y"); axis.set_zlabel("Z")
         axis.view_init(elev=20, azim=-65)
-        axis.set_axis_on(); axis.grid(True); axis.dist = 4.5
-    figure.suptitle("Cat3D OBJ: original model plus nine 3D representations", fontsize=16, y=0.995)
-    figure.tight_layout(rect=(0, 0, 1, 0.94), h_pad=2.4)
+        axis.set_axis_on(); axis.grid(True); axis.dist = 3.2
+    # Deliberately no figure-level header: the panel labels carry the meaning.
+    figure.tight_layout(rect=(0, 0, 1, 1), h_pad=2.4)
+    output = Path(output); output.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output, dpi=140); plt.close(figure)
+    return output
+
+
+def make_cat3d_2d_grid(obj_path, output):
+    """Render the original OBJ and all nine representations in image space."""
+    mesh = load_obj(obj_path)
+    vertices, faces = normalize_vertices(mesh.vertices), mesh.faces
+    asset = _build_asset(vertices, faces)
+    figure, axes = plt.subplots(2, 5, figsize=(24, 11), squeeze=False)
+
+    _projected_mesh(axes[0, 0], vertices, faces, "front", "Original OBJ / CAD")
+    points = asset["points"]
+    front, depth = _project(points, "front")
+    projected_voxel, _ = _project(asset["voxel_centers"], "front")
+    projected_tsdf, _ = _project(asset["tsdf_centers"], "front")
+    projected_super, _ = _project(asset["superpoint_centers"], "front")
+    projected_graph, _ = _project(asset["graph_points"], "front")
+    projected_octree, _ = _project(asset["octree"]["centers"], "front")
+
+    axes[0, 1].scatter(front[:, 0], front[:, 1], s=2, c="royalblue", alpha=0.62)
+    axes[0, 1].set_title("Point cloud"); axes[0, 1].axis("off"); axes[0, 1].set_aspect("equal")
+    axes[0, 2].scatter(front[:, 0], front[:, 1], s=2, c=asset["point_normals"][:, 2], cmap="cividis", alpha=0.65)
+    axes[0, 2].set_title("Surfel projection"); axes[0, 2].axis("off"); axes[0, 2].set_aspect("equal")
+    _projected_mesh(axes[0, 3], vertices, faces, "front", "Mesh projection")
+    axes[0, 4].scatter(projected_voxel[:, 0], projected_voxel[:, 1], s=7,
+                       c=asset["voxel_centers"][:, 2], cmap="gray", alpha=0.75)
+    axes[0, 4].set_title("Voxel projection"); axes[0, 4].axis("off"); axes[0, 4].set_aspect("equal")
+
+    axes[1, 0].scatter(projected_tsdf[:, 0], projected_tsdf[:, 1], s=7,
+                       c=asset["tsdf_values"], cmap="plasma", alpha=0.75)
+    axes[1, 0].set_title("Surface TSDF projection"); axes[1, 0].axis("off"); axes[1, 0].set_aspect("equal")
+    axes[1, 1].scatter(projected_super[:, 0], projected_super[:, 1], s=14,
+                       c=np.arange(len(projected_super)), cmap="tab20", alpha=0.85)
+    axes[1, 1].set_title("Superpoint projection"); axes[1, 1].axis("off"); axes[1, 1].set_aspect("equal")
+    axes[1, 2].scatter(projected_graph[:, 0], projected_graph[:, 1], s=3, c="black", alpha=0.75)
+    for source, target in asset["graph_edges"][sample_indices(len(asset["graph_edges"]), min(len(asset["graph_edges"]), 5000), seed=4)]:
+        segment = projected_graph[[source, target]]
+        axes[1, 2].plot(segment[:, 0], segment[:, 1], color="0.35", linewidth=0.22, alpha=0.18)
+    axes[1, 2].set_title("Graph projection"); axes[1, 2].axis("off"); axes[1, 2].set_aspect("equal")
+    axes[1, 3].scatter(projected_octree[:, 0], projected_octree[:, 1], s=5,
+                       c=asset["octree"]["levels"], cmap="YlOrBr", alpha=0.75)
+    axes[1, 3].set_title("Octree projection"); axes[1, 3].axis("off"); axes[1, 3].set_aspect("equal")
+    axes[1, 4].scatter(front[:, 0], front[:, 1], s=3,
+                       c=asset["descriptors"][:, 5], cmap="turbo", alpha=0.8)
+    axes[1, 4].set_title("Descriptor projection"); axes[1, 4].axis("off"); axes[1, 4].set_aspect("equal")
+    figure.tight_layout(h_pad=2.4)
     output = Path(output); output.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output, dpi=140); plt.close(figure)
     return output
@@ -276,12 +332,10 @@ def make_2d_grid(image_path, obj_path, output):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Render catDog RGB and Cat OBJ representation grids")
-    parser.add_argument("--image", default="data/catDog.png")
+    parser = argparse.ArgumentParser(description="Render Cat3D OBJ representation grids")
     parser.add_argument("--obj", default=None, help="OBJ path; defaults to the first OBJ under data/")
     parser.add_argument("--output-root", default="outputs/cat3d")
     args = parser.parse_args()
-    image_path = Path(args.image)
     if args.obj:
         obj_path = Path(args.obj)
     else:
@@ -291,6 +345,7 @@ def main():
         obj_path = candidates[0]
     root = Path(args.output_root)
     print(make_cat3d_grid(obj_path, root / "cat3d_original_plus_9_grid.png"))
+    print(make_cat3d_2d_grid(obj_path, root / "cat3d_2d_representation_grid.png"))
     print(f"OBJ: {obj_path}")
 
 

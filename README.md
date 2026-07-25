@@ -22,7 +22,7 @@ the 3D grids show the raw geometric structures.
 | --- | --- | --- |
 | NYUv2 | <img src="docs/figures/nyuv2_2d_representation_grid.png" alt="NYUv2 2D representation grid" width="420"> | <img src="docs/figures/nyuv2_3d_representation_grid.png" alt="NYUv2 3D representation grid" width="420"> |
 | SUN RGB-D | <img src="docs/figures/sunrgbd_2d_representation_grid.png" alt="SUN RGB-D 2D representation grid" width="420"> | <img src="docs/figures/sunrgbd_3d_representation_grid.png" alt="SUN RGB-D 3D representation grid" width="420"> |
-| Cat3D OBJ | - | <img src="docs/figures/cat3d_original_plus_9_grid.png" alt="Cat3D original model plus nine representations" width="420"> |
+| Cat3D OBJ | <img src="docs/figures/cat3d_2d_representation_grid.png" alt="Cat3D 2D representation grid" width="420"> | <img src="docs/figures/cat3d_original_plus_9_grid.png" alt="Cat3D original model plus nine representations" width="420"> |
 
 The Cat3D figure contains the original OBJ/CAD model plus nine derived 3D
 representations. The separate `catDog.png` RGB scene is intentionally not
@@ -114,6 +114,7 @@ surface TSDF, superpoint regions, graph, octree, and descriptor.
 
 ```text
 outputs/cat3d/cat3d_original_plus_9_grid.png
+outputs/cat3d/cat3d_2d_representation_grid.png
 outputs/cat3d/cat3d_projection_analysis.png
 outputs/cat3d/cat3d_statistics.png
 ```
