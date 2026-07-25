@@ -1,4 +1,4 @@
-# 3D Representation Study
+# 3D Representation
 
 This is a standalone research project for comparing deterministic visible RGB-D
 representations on NYUv2 and SUN RGB-D.
