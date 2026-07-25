@@ -64,6 +64,22 @@ Use `notebooks/05_multiview_projection_grids.ipynb` to view those projections.
 Use `--max-samples 1` for a quick check, `--sample-id 00001` for a specific
 frame, and `--overwrite` to recompute an existing result.
 
+## catDog asset visualization
+
+The local `data/catDog.png` is a 2D RGB scene. A separate Cat OBJ asset is
+also present under `data/cat3D/`. The following grids use the RGB scene as a
+reference and compute true mesh, point-cloud, voxel, octree, graph, descriptor,
+normal, and projection views from the OBJ asset:
+
+```text
+outputs/catdog/catdog_3d_representation_grid.png
+outputs/catdog/catdog_2d_representation_grid.png
+```
+
+The OBJ asset is not camera-aligned to the two cats in the RGB scene, so these
+are asset representations rather than a reconstruction of that photograph.
+Use `notebooks/06_catdog_asset_grids.ipynb` to view both grids.
+
 ## How to read the first results
 
 `valid_depth` mIoU evaluates only pixels with valid depth and representation

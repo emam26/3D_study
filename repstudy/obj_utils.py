@@ -65,6 +65,16 @@ def face_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
     return (normals / np.maximum(lengths, 1e-8)).astype(np.float32)
 
 
+def vertex_normals(vertices: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Area-averaged vertex normals for surfel rendering."""
+    normals = face_normals(vertices, faces)
+    output = np.zeros_like(vertices, dtype=np.float32)
+    for corner in range(3):
+        np.add.at(output, faces[:, corner], normals)
+    lengths = np.linalg.norm(output, axis=1, keepdims=True)
+    return (output / np.maximum(lengths, 1e-8)).astype(np.float32)
+
+
 def knn_graph(points: np.ndarray, k: int = 8) -> np.ndarray:
     points = np.asarray(points, dtype=np.float32)
     if len(points) <= 1:
