@@ -1,8 +1,7 @@
 # 3D Representation Oracle Study
 
 This is a standalone research project for comparing deterministic visible RGB-D
-representations on NYUv2 and SUN RGB-D. It is not a segmentation model and does
-not train a neural network.
+representations on NYUv2 and SUN RGB-D.
 
 The study will compare organized point clouds, surfels, partial meshes, sparse
 voxels, single-view sparse TSDFs, superpoint regions, kNN graphs, adaptive
