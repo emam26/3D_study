@@ -26,7 +26,8 @@ cannot appear strong by evaluating only its easiest pixels.
    virtual-camera projections.
 4. **Complete:** headless visualization panels, compressed map exports, and
    multi-sample aggregation for the fixed 10-image pilots.
-5. **In progress:** rate-distortion tables and cross-dataset analysis. Both
+5. **Complete:** rate-distortion tables, cross-dataset ranking, per-image
+   variability, coverage-optimism analysis, and virtual-view robustness. Both
    NYUv2 and SUN RGB-D adapters are validated; no full-dataset run is planned.
 
 ## Coordinate convention

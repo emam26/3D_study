@@ -50,6 +50,65 @@ voxels, single-view sparse TSDFs, superpoint regions, kNN graphs, adaptive
 octrees, local geometric descriptors, and deterministic multiview projections. Ground truth is used only for oracle labeling and
 evaluation -- not to construct the primary geometry.
 
+## Which representation works better for RGB-D?
+
+The extended analysis uses all nine representation styles, all ten pilot images
+per dataset, and the four saved views (original, left oblique, right oblique,
+and elevated). It separates dense semantic fidelity from coverage, boundary
+quality, runtime, element count, image-to-image variation, and viewpoint
+robustness.
+
+<p align="center">
+  <img src="docs/figures/representation_tradeoff_overview.png" alt="Representation quality, coverage, runtime, and size trade-offs" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/figures/representation_rank_heatmap.png" alt="Representation ranks across quality, coverage, purity, boundary quality, runtime, and size" width="100%">
+</p>
+
+| Decision objective | NYUv2 pilot | SUN RGB-D pilot |
+| --- | --- | --- |
+| Highest full-label mIoU with full coverage | Voxel — 96.4% | Voxel — 60.3% |
+| Best boundary F1 | Mesh — 71.4% | Mesh — 43.4% |
+| Smallest full-coverage style | Superpoint — 972 elements | Superpoint — 904 elements |
+| Fastest full-coverage style | Octree — 0.46 s/image | Octree — 0.38 s/image |
+
+The practical first choice for dense RGB-D geometry in this pilot is therefore
+the voxel representation. Choose octrees when memory and construction time are
+more important, and meshes when boundary preservation is the priority. The
+point cloud, surfel, graph, and descriptor rows use fixed point budgets and
+cover only about 1–2% of the labeled image; their near-perfect valid-depth mIoU
+is therefore not a fair dense-image comparison. Full-label mIoU and coverage
+must be read together.
+
+<p align="center">
+  <img src="docs/figures/representation_sample_variability.png" alt="Per-image variability for representation quality and coverage" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/figures/representation_multiview_robustness.png" alt="Multiview robustness for every representation style" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/figures/representation_case_study.png" alt="Coverage and oracle error maps for a median-quality case study in each dataset" width="100%">
+</p>
+
+The tables behind these plots are written to
+`outputs/analysis/representation_extended_metrics.csv`,
+`outputs/analysis/representation_multiview_metrics.csv`, and
+`outputs/analysis/representation_ranks.csv`. Recreate the complete analysis
+with:
+
+```bash
+python -m repstudy.plot_extended_analysis
+```
+
+The complete written interpretation is in
+[`docs/representation_findings.md`](docs/representation_findings.md). These are deterministic oracle
+measurements of visible RGB-D geometry on ten images per dataset, not a claim
+that one representation is universally optimal or a replacement for a trained
+segmentation benchmark.
+
 ## Current status
 
 The first deterministic pipeline is implemented and smoke-tested on NYUv2:
