@@ -28,6 +28,16 @@ def _equal_axes(axis, points):
     axis.set_box_aspect((1, 1, 1))
 
 
+def _clean_3d_axis(axis):
+    """Match the paper-style atlas: keep geometry and titles, hide coordinates."""
+    title = axis.get_title()
+    axis.set_proj_type("ortho")
+    axis.dist = 5
+    axis.set_axis_off()
+    axis.grid(False)
+    axis.set_title(title, pad=2)
+
+
 def _mesh_plot(axis, vertices, faces, max_faces=12000):
     ids = sample_indices(len(faces), max_faces, seed=42)
     selected = faces[ids]
@@ -182,7 +192,28 @@ def make_3d_grid(image_path, obj_path, output):
 
 
 def make_cat3d_grid(obj_path, output):
-    return make_9rep_grid(obj_path, output, "Cat3D OBJ: nine 3D representations")
+    mesh = load_obj(obj_path)
+    vertices, faces = normalize_vertices(mesh.vertices), mesh.faces
+    asset = _build_asset(vertices, faces)
+    figure = plt.figure(figsize=(24, 13.5))
+
+    # The first panel is the original supplied OBJ/CAD model. The remaining
+    # nine panels are derived representations, matching the main study list.
+    axis = figure.add_subplot(2, 5, 1, projection="3d")
+    _mesh_plot(axis, vertices, faces)
+    axis.set_title("Original OBJ / CAD")
+    axis.view_init(elev=20, azim=-65)
+    _clean_3d_axis(axis)
+    for index, name in enumerate(REPRESENTATION_NAMES, 2):
+        axis = figure.add_subplot(2, 5, index, projection="3d")
+        _draw_representation(axis, name, vertices, faces, asset)
+        axis.view_init(elev=20, azim=-65)
+        _clean_3d_axis(axis)
+    figure.suptitle("Cat3D OBJ: original model plus nine 3D representations", fontsize=16, y=0.995)
+    figure.tight_layout(rect=(0, 0, 1, 0.94), h_pad=2.4)
+    output = Path(output); output.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output, dpi=140); plt.close(figure)
+    return output
 
 
 def _project(vertices, view):
@@ -244,7 +275,7 @@ def main():
     parser = argparse.ArgumentParser(description="Render catDog RGB and Cat OBJ representation grids")
     parser.add_argument("--image", default="data/catDog.png")
     parser.add_argument("--obj", default=None, help="OBJ path; defaults to the first OBJ under data/")
-    parser.add_argument("--output-root", default="outputs/catdog")
+    parser.add_argument("--output-root", default="outputs/cat3d")
     args = parser.parse_args()
     image_path = Path(args.image)
     if args.obj:
@@ -255,9 +286,7 @@ def main():
             raise FileNotFoundError("No OBJ found under data/")
         obj_path = candidates[0]
     root = Path(args.output_root)
-    print(make_3d_grid(image_path, obj_path, root / "catdog_3d_representation_grid.png"))
-    print(make_2d_grid(image_path, obj_path, root / "catdog_2d_representation_grid.png"))
-    print(make_cat3d_grid(obj_path, root / "cat3d_9representation_grid.png"))
+    print(make_cat3d_grid(obj_path, root / "cat3d_original_plus_9_grid.png"))
     print(f"OBJ: {obj_path}")
 
 
