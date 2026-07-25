@@ -12,7 +12,7 @@ from PIL import Image
 
 from .obj_utils import (face_centers, face_normals, knn_graph, load_obj,
                         local_descriptors, normalize_vertices, octree_leaves,
-                        sample_indices, voxelize)
+                        sample_indices, vertex_normals, voxelize)
 
 
 def _equal_axes(axis, points):
@@ -56,7 +56,16 @@ def _box(axis, lower, upper):
 def _build_asset(vertices, faces):
     point_ids = sample_indices(len(vertices), 6000, seed=42)
     points = vertices[point_ids]
+    normals = vertex_normals(vertices, faces)
     voxel_centers, voxel_members = voxelize(vertices, voxel_size=0.045)
+    tsdf_centers, _ = voxelize(vertices, voxel_size=0.035)
+    try:
+        from scipy.spatial import cKDTree
+        nearest_distance, _ = cKDTree(vertices).query(tsdf_centers, k=1)
+    except Exception:
+        nearest_distance = np.zeros(len(tsdf_centers), dtype=np.float32)
+    tsdf_values = np.clip(np.asarray(nearest_distance, dtype=np.float32) / 0.12, 0.0, 1.0)
+    superpoint_centers, superpoint_members = voxelize(vertices, voxel_size=0.075)
     octree = octree_leaves(vertices, max_depth=7, max_points_per_leaf=64)
     graph_ids = sample_indices(len(vertices), 1800, seed=7)
     graph_points = vertices[graph_ids]
@@ -66,7 +75,12 @@ def _build_asset(vertices, faces):
     normals = face_normals(vertices, faces)
     return {
         "points": points,
+        "point_normals": normals[point_ids],
         "voxel_centers": voxel_centers,
+        "tsdf_centers": tsdf_centers,
+        "tsdf_values": tsdf_values,
+        "superpoint_centers": superpoint_centers,
+        "superpoint_members": superpoint_members,
         "octree": octree,
         "graph_points": graph_points,
         "graph_edges": graph_edges,
@@ -76,77 +90,99 @@ def _build_asset(vertices, faces):
     }
 
 
-def make_3d_grid(image_path, obj_path, output):
-    image = Image.open(image_path).convert("RGB")
+REPRESENTATION_NAMES = ("pointcloud", "surfel", "mesh", "voxel", "tsdf",
+                        "superpoint", "graph", "octree", "descriptor")
+
+
+def _draw_representation(axis, name, vertices, faces, asset):
+    points = asset["points"]
+    if name == "mesh":
+        _mesh_plot(axis, vertices, faces)
+    elif name == "pointcloud":
+        axis.scatter(points[:, 0], points[:, 1], points[:, 2], s=2, alpha=0.55, c="royalblue")
+        axis.set_title(f"Point cloud ({len(points):,} points)")
+    elif name == "surfel":
+        axis.scatter(points[:, 0], points[:, 1], points[:, 2], s=2, alpha=0.5, c="steelblue")
+        axis.quiver(points[:, 0], points[:, 1], points[:, 2], asset["point_normals"][:, 0],
+                    asset["point_normals"][:, 1], asset["point_normals"][:, 2], length=0.025,
+                    normalize=True, linewidth=0.22, color="darkorange", alpha=0.25)
+        axis.set_title(f"Surfel ({len(points):,} oriented points)")
+    elif name == "voxel":
+        centers = asset["voxel_centers"]
+        axis.scatter(centers[:, 0], centers[:, 1], centers[:, 2], s=5, alpha=0.55,
+                     c=centers[:, 2], cmap="gray")
+        axis.set_title(f"Voxel ({len(centers):,} cells)")
+    elif name == "tsdf":
+        centers, values = asset["tsdf_centers"], asset["tsdf_values"]
+        axis.scatter(centers[:, 0], centers[:, 1], centers[:, 2], s=5, alpha=0.65,
+                     c=values, cmap="plasma", vmin=0, vmax=1)
+        axis.set_title(f"Surface TSDF ({len(centers):,} cells)")
+    elif name == "superpoint":
+        centers = asset["superpoint_centers"]
+        axis.scatter(centers[:, 0], centers[:, 1], centers[:, 2], s=12,
+                     c=np.arange(len(centers)), cmap="tab20", alpha=0.85)
+        axis.set_title(f"Superpoint regions ({len(centers):,})")
+    elif name == "graph":
+        graph_points, edges = asset["graph_points"], asset["graph_edges"]
+        axis.scatter(graph_points[:, 0], graph_points[:, 1], graph_points[:, 2], s=3, c="black", alpha=0.7)
+        for source, target in edges[sample_indices(len(edges), min(len(edges), 6000), seed=4)]:
+            segment = graph_points[[source, target]]
+            axis.plot(segment[:, 0], segment[:, 1], segment[:, 2], color="0.35", linewidth=0.22, alpha=0.18)
+        axis.set_title(f"Graph ({len(graph_points):,} nodes / {len(edges):,} edges)")
+    elif name == "octree":
+        tree = asset["octree"]
+        ids = sample_indices(len(tree["centers"]), 650, seed=42)
+        axis.scatter(tree["centers"][ids, 0], tree["centers"][ids, 1], tree["centers"][ids, 2],
+                     s=5, c="darkgoldenrod", alpha=0.7)
+        for index in ids:
+            _box(axis, tree["bounds_min"][index], tree["bounds_max"][index])
+        axis.set_title(f"Octree ({len(tree['centers']):,} leaves)")
+    elif name == "descriptor":
+        axis.scatter(points[:, 0], points[:, 1], points[:, 2], s=3,
+                     c=asset["descriptors"][:, 5], cmap="turbo", alpha=0.8)
+        axis.set_title("Descriptor (local scattering)")
+    _equal_axes(axis, vertices)
+
+
+def make_9rep_grid(obj_path, output, title, image_path=None):
     mesh = load_obj(obj_path)
-    vertices = normalize_vertices(mesh.vertices)
-    faces = mesh.faces
+    vertices, faces = normalize_vertices(mesh.vertices), mesh.faces
     asset = _build_asset(vertices, faces)
-
-    figure = plt.figure(figsize=(22, 11))
-    axes = []
-    image_axis = figure.add_subplot(2, 4, 1)
-    image_axis.imshow(image)
-    image_axis.set_title("catDog RGB scene")
-    image_axis.axis("off")
-
-    axis = figure.add_subplot(2, 4, 2, projection="3d")
-    _mesh_plot(axis, vertices, faces)
-    axis.view_init(elev=20, azim=-65)
-    axes.append(axis)
-
-    axis = figure.add_subplot(2, 4, 3, projection="3d")
-    axis.scatter(asset["points"][:, 0], asset["points"][:, 1], asset["points"][:, 2], s=2, alpha=0.55, c="royalblue")
-    _equal_axes(axis, vertices); axis.set_title(f"Point cloud ({len(asset['points']):,} points)")
-    axis.view_init(elev=20, azim=-65); axes.append(axis)
-
-    axis = figure.add_subplot(2, 4, 4, projection="3d")
-    axis.scatter(asset["voxel_centers"][:, 0], asset["voxel_centers"][:, 1], asset["voxel_centers"][:, 2],
-                 s=5, alpha=0.55, c=asset["voxel_centers"][:, 2], cmap="gray")
-    _equal_axes(axis, vertices); axis.set_title(f"Voxel ({len(asset['voxel_centers']):,} cells)")
-    axis.view_init(elev=20, azim=-65); axes.append(axis)
-
-    axis = figure.add_subplot(2, 4, 5, projection="3d")
-    tree = asset["octree"]
-    ids = sample_indices(len(tree["centers"]), 650, seed=42)
-    axis.scatter(tree["centers"][ids, 0], tree["centers"][ids, 1], tree["centers"][ids, 2], s=5, c="darkgoldenrod", alpha=0.7)
-    for index in ids:
-        _box(axis, tree["bounds_min"][index], tree["bounds_max"][index])
-    _equal_axes(axis, vertices); axis.set_title(f"Octree ({len(tree['centers']):,} leaves)")
-    axis.view_init(elev=20, azim=-65); axes.append(axis)
-
-    axis = figure.add_subplot(2, 4, 6, projection="3d")
-    points, edges = asset["graph_points"], asset["graph_edges"]
-    axis.scatter(points[:, 0], points[:, 1], points[:, 2], s=3, c="black", alpha=0.7)
-    for source, target in edges[sample_indices(len(edges), min(len(edges), 6000), seed=4)]:
-        segment = points[[source, target]]
-        axis.plot(segment[:, 0], segment[:, 1], segment[:, 2], color="0.35", linewidth=0.22, alpha=0.18)
-    _equal_axes(axis, vertices); axis.set_title(f"Graph ({len(points):,} nodes / {len(edges):,} edges)")
-    axis.view_init(elev=20, azim=-65); axes.append(axis)
-
-    axis = figure.add_subplot(2, 4, 7, projection="3d")
-    scalar = asset["descriptors"][:, 5]
-    axis.scatter(asset["points"][:, 0], asset["points"][:, 1], asset["points"][:, 2], s=3, c=scalar, cmap="turbo", alpha=0.8)
-    _equal_axes(axis, vertices); axis.set_title("Descriptor (local scattering)")
-    axis.view_init(elev=20, azim=-65); axes.append(axis)
-
-    axis = figure.add_subplot(2, 4, 8, projection="3d")
-    normal_ids = sample_indices(len(asset["normal_centers"]), 1800, seed=13)
-    centers = asset["normal_centers"][normal_ids]
-    normals = asset["normal_vectors"][normal_ids]
-    axis.scatter(centers[:, 0], centers[:, 1], centers[:, 2], s=2, c="lightgray", alpha=0.5)
-    axis.quiver(centers[:, 0], centers[:, 1], centers[:, 2], normals[:, 0], normals[:, 1], normals[:, 2],
-                length=0.025, normalize=True, linewidth=0.25, color="teal", alpha=0.35)
-    _equal_axes(axis, vertices); axis.set_title("Surface normals")
-    axis.view_init(elev=20, azim=-65); axes.append(axis)
-
-    for axis in axes:
+    include_image = image_path is not None
+    ncols = 4 if include_image else 3
+    nslots = len(REPRESENTATION_NAMES) + (1 if include_image else 0)
+    nrows = int(np.ceil(nslots / ncols))
+    figure = plt.figure(figsize=(22 if include_image else 18, 5.8 * nrows))
+    start = 1
+    if include_image:
+        image_axis = figure.add_subplot(nrows, ncols, 1)
+        image_axis.imshow(Image.open(image_path).convert("RGB"))
+        image_axis.set_title("catDog RGB scene (reference only)")
+        image_axis.axis("off")
+        start = 2
+    for index, name in enumerate(REPRESENTATION_NAMES):
+        axis = figure.add_subplot(nrows, ncols, start + index, projection="3d")
+        _draw_representation(axis, name, vertices, faces, asset)
         axis.set_xlabel("X"); axis.set_ylabel("Y"); axis.set_zlabel("Z")
-    figure.suptitle("catDog scene with standalone Cat OBJ representations", fontsize=16)
-    figure.tight_layout()
+        axis.view_init(elev=20, azim=-65)
+    for index in range(start + len(REPRESENTATION_NAMES), nrows * ncols + 1):
+        axis = figure.add_subplot(nrows, ncols, index)
+        axis.axis("off")
+    figure.suptitle(title, fontsize=16, y=0.995)
+    figure.tight_layout(rect=(0, 0, 1, 0.97))
     output = Path(output); output.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(output, dpi=140); plt.close(figure)
     return output
+
+
+def make_3d_grid(image_path, obj_path, output):
+    return make_9rep_grid(obj_path, output,
+                          "catDog scene with nine representations from the standalone Cat OBJ",
+                          image_path=image_path)
+
+
+def make_cat3d_grid(obj_path, output):
+    return make_9rep_grid(obj_path, output, "Cat3D OBJ: nine 3D representations")
 
 
 def _project(vertices, view):
@@ -221,6 +257,7 @@ def main():
     root = Path(args.output_root)
     print(make_3d_grid(image_path, obj_path, root / "catdog_3d_representation_grid.png"))
     print(make_2d_grid(image_path, obj_path, root / "catdog_2d_representation_grid.png"))
+    print(make_cat3d_grid(obj_path, root / "cat3d_9representation_grid.png"))
     print(f"OBJ: {obj_path}")
 
 

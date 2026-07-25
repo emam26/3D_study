@@ -74,10 +74,15 @@ normal, and projection views from the OBJ asset:
 ```text
 outputs/catdog/catdog_3d_representation_grid.png
 outputs/catdog/catdog_2d_representation_grid.png
+outputs/catdog/cat3d_9representation_grid.png
 ```
 
-The OBJ asset is not camera-aligned to the two cats in the RGB scene, so these
-are asset representations rather than a reconstruction of that photograph.
+The 3D grids use the same nine representations as the main study: point cloud,
+surfel, mesh, voxel, surface TSDF, superpoint regions, graph, octree, and
+descriptor. The OBJ asset is not camera-aligned to the two cats in the RGB
+scene, so the RGB grid is an asset comparison rather than a reconstruction of
+that photograph. The `cat3d_9representation_grid.png` file contains only the
+actual 3D Cat OBJ representations.
 Use `notebooks/06_catdog_asset_grids.ipynb` to view both grids.
 
 ## How to read the first results
