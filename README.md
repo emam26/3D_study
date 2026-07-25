@@ -109,6 +109,71 @@ measurements of visible RGB-D geometry on ten images per dataset, not a claim
 that one representation is universally optimal or a replacement for a trained
 segmentation benchmark.
 
+## Small-sample follow-up experiments
+
+The next experiments also use exactly ten NYUv2 and ten SUN RGB-D images. The
+same image IDs are reused across all settings, so the comparisons are paired
+and reproducible without running the full datasets.
+
+<p align="center">
+  <img src="docs/figures/rate_distortion.png" alt="Rate-distortion curves for all nine RGB-D representation styles" width="100%">
+</p>
+
+The rate-distortion pilot evaluates the baseline plus controlled coarse/fine
+settings for all nine styles. For example, voxel mIoU changes from 92.1% to
+96.4% to 98.6% on NYUv2 as the mean element count changes from 6.8k to 21.9k
+to 62.6k. On SUN RGB-D the corresponding values are 58.9%, 60.3%, and 61.2%.
+This shows that representation resolution is a real factor in the ranking.
+
+<p align="center">
+  <img src="docs/figures/depth_corruption_robustness.png" alt="Depth dropout and Gaussian noise robustness for voxel, octree, and superpoint" width="100%">
+</p>
+
+The corruption pilot applies 10% and 30% random depth dropout plus 1 cm and
+3 cm Gaussian depth noise. At 30% dropout, NYUv2 full-label mIoU falls to
+67.8% for voxel, 65.6% for octree, and 60.6% for superpoints. The corresponding
+SUN RGB-D values are 42.3%, 41.1%, and 38.5%. Gaussian noise is less damaging
+than dropout in this pilot because the representations still retain complete
+valid-depth support.
+
+<p align="center">
+  <img src="docs/figures/adaptive_hybrid_results.png" alt="Held-out adaptive hybrid comparison against voxel, mesh, and octree" width="100%">
+</p>
+
+The adaptive hybrid uses geometry-only depth/RGB edge scores: mesh near
+structural edges, voxel in interiors, and octree as a fallback. The edge
+quantile is selected on five images and evaluated on five held-out images. Its
+held-out full-label mIoU is 98.2% on NYUv2 versus 96.8% for voxel, and 65.6% on
+SUN RGB-D versus 64.9% for voxel. This is promising pilot evidence, not yet a
+final claim because the held-out split contains only five images per dataset.
+
+<p align="center">
+  <img src="docs/figures/representation_efficiency.png" alt="Runtime and XYZ geometry-storage efficiency for the nine baseline styles" width="100%">
+</p>
+
+The efficiency plot reports construction time and an explicitly labeled XYZ
+geometry-storage lower bound. It is a storage proxy, not a measurement of the
+complete serialized representation including adjacency and attributes.
+
+The experiment runner and tables are:
+
+```bash
+python -m repstudy.run_small_sample_experiments
+```
+
+```text
+outputs/experiments/rate_distortion_metrics.csv
+outputs/experiments/depth_corruption_metrics.csv
+outputs/experiments/adaptive_hybrid_metrics.csv
+outputs/experiments/representation_efficiency.csv
+outputs/experiments/small_sample_experiments.md
+```
+
+The full protocol and limitations are summarized in
+[`docs/small_sample_experiments.md`](docs/small_sample_experiments.md). These
+experiments are a 10+10-image pilot; full-dataset evaluation is still required
+before making universal claims.
+
 ## Current status
 
 The first deterministic pipeline is implemented and smoke-tested on NYUv2:
