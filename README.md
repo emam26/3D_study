@@ -346,3 +346,26 @@ the missing-coverage measurement possible; no neural network is trained in
 this study milestone.
 
 Generated data, datasets, credentials, and checkpoints will remain outside Git.
+
+## 7. Final recommendation
+
+For dense RGB-D scene representation, **voxel is the recommended default** in
+this pilot. It provides full image support and the highest full-label mIoU on
+both datasets: 96.4% on NYUv2 and 60.3% on SUN RGB-D. Its regular spatial grid
+also makes projection, batching, and downstream processing straightforward.
+
+Choose another representation when the objective is different:
+
+| Objective | Recommendation | Reason |
+| --- | --- | --- |
+| Best general dense representation | Voxel | Highest full-label mIoU with full coverage in this pilot |
+| Best semantic boundaries | Mesh | Highest boundary F1 on both datasets |
+| Lowest construction cost | Octree | Fastest full-coverage construction in the pilot |
+| Smallest full-coverage representation | Superpoint | Fewest elements while retaining full support |
+| Adaptive future direction | Hybrid mesh + voxel + octree | Promising held-out pilot result, but needs larger validation |
+
+> **Final observation:** Use voxel as the primary RGB-D representation for the
+> current study. Use mesh when boundary quality matters most, octree when speed
+> or memory matters most, and superpoints when compactness matters most. The
+> adaptive hybrid is a promising next experiment, not yet the final winner
+> because it was evaluated on only five held-out images per dataset.
