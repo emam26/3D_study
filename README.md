@@ -1,7 +1,20 @@
-# 3D Representation Study
+# Independent RGB-D Representation Study
 
-This is a standalone research project for comparing deterministic visible RGB-D
-representations on NYUv2 and SUN RGB-D.
+This is a standalone research project for studying how RGB-D scene information
+can be represented and evaluated on NYUv2 and SUN RGB-D. It is intentionally
+separate from the other model-development repositories.
+
+## Project map
+
+The repository contains two clearly separated tracks:
+
+| Track | Main question | Current status |
+| --- | --- | --- |
+| Deterministic 3D representation study | Which visible RGB-D representation gives the best geometry, coverage, boundary quality, and efficiency? | Main 10-image-per-dataset analysis completed |
+| Neural segmentation screening | Which RGB encoder/decoder combination is a useful control before adding depth or 3D? | V1 RGB-only SegFormer pilot |
+
+The neural track does not replace the representation study. It provides a
+controlled semantic-segmentation benchmark for later representation variants.
 
 ## At a glance
 
@@ -19,7 +32,9 @@ representations on NYUv2 and SUN RGB-D.
 > particular quality, coverage, boundary, or efficiency goal; it does not claim
 > that one representation is universally best.
 
-## 0. First neural screening version: V1 RGB SegFormer
+## Neural segmentation screening track
+
+### V1 RGB SegFormer baseline
 
 V1 is the control model for the planned architecture comparison:
 
@@ -66,7 +81,9 @@ The PNG is stored beside the checkpoint under
 > a 3D representation is useful only if a matched later version improves over
 > this baseline under the same split and evaluation protocol.
 
-## 1. Visual atlas: Cat3D and RGB-D grids
+## Deterministic 3D representation track
+
+### Visual atlas: Cat3D and RGB-D grids
 
 ### Cat3D 3D representation atlas
 
@@ -101,7 +118,7 @@ included in the output atlas.
 > labeled image pixels after projection, so the 2D and 3D grids must be read
 > together.
 
-## 2. Baseline benchmark and Cat3D analysis
+### Baseline benchmark and Cat3D analysis
 
 The pilot comparison below reports valid-depth mIoU, coverage, full-label mIoU,
 and construction time for all nine representations on both RGB-D datasets.
@@ -130,7 +147,7 @@ voxels, single-view sparse TSDFs, superpoint regions, kNN graphs, adaptive
 octrees, local geometric descriptors, and deterministic multiview projections. Ground truth is used only for oracle labeling and
 evaluation -- not to construct the primary geometry.
 
-## 3. Extended comparison: quality, coverage, and stability
+### Extended comparison: quality, coverage, and stability
 
 The extended analysis uses all nine representation styles, all ten pilot images
 per dataset, and the four saved views (original, left oblique, right oblique,
@@ -213,7 +230,7 @@ segmentation benchmark.
 > not a trained segmentation benchmark; it identifies candidates for later
 > learned-system experiments.
 
-## 4. Small-sample follow-up experiments
+### Small-sample follow-up experiments
 
 The next experiments also use exactly ten NYUv2 and ten SUN RGB-D images. The
 same image IDs are reused across all settings, so the comparisons are paired
@@ -294,7 +311,7 @@ before making universal claims.
 > **Observation:** These are pilot experiments for comparison and debugging;
 > full-dataset evaluation is required before broad conclusions.
 
-## 5. Reproducibility and outputs
+### Reproducibility and outputs
 
 The first deterministic pipeline is implemented and smoke-tested on NYUv2:
 backprojection, organized point clouds, surfels, partial meshes, sparse
@@ -376,7 +393,7 @@ Use `notebooks/06_catdog_asset_grids.ipynb` to view the Cat3D atlas.
 > **Observation:** Cat3D is a controlled object-level sanity check; NYUv2 and
 > SUN RGB-D remain the evidence for real RGB-D scene behavior.
 
-## 6. How to read the metrics
+### How to read the metrics
 
 `valid_depth` mIoU evaluates only pixels with valid depth and representation
 coverage. `full_label` mIoU counts uncovered labeled pixels as missing. Always
@@ -391,12 +408,13 @@ covering only a small fraction of the image.
 
 Each representation keeps the source image pixels that contributed to each
 3D element. That bookkeeping is what makes deterministic oracle labeling and
-the missing-coverage measurement possible; no neural network is trained in
-this study milestone.
+the missing-coverage measurement possible. The deterministic track uses no
+neural network; the separate V1 screening track is the only learned baseline
+currently included.
 
 Generated data, datasets, credentials, and checkpoints will remain outside Git.
 
-## 7. Final recommendation
+### Final recommendation
 
 For dense RGB-D scene representation, **voxel is the recommended default** in
 this pilot. It provides full image support and the highest full-label mIoU on
