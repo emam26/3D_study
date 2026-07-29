@@ -10,12 +10,47 @@ representations on NYUv2 and SUN RGB-D.
   superpoint, graph, octree, and local descriptor.
 - **Evaluation:** full-label mIoU, valid-depth mIoU, coverage, boundary F1,
   purity, construction time, element count, and viewpoint stability.
-- **Scope:** deterministic visible RGB-D geometry; no neural network is trained
-  in this study milestone.
+- **Scope:** deterministic visible RGB-D geometry plus a clearly separated
+  RGB-only segmentation pilot. The deterministic representation study remains
+  the main analysis; the neural pilot is used only to screen architecture
+  combinations.
 
 > **Observation:** The study identifies which representation is useful for a
 > particular quality, coverage, boundary, or efficiency goal; it does not claim
 > that one representation is universally best.
+
+## 0. First neural screening version: V1 RGB SegFormer
+
+V1 is the control model for the planned architecture comparison:
+
+```text
+RGB image → SegFormer-B0 encoder/decoder → semantic logits
+```
+
+It intentionally uses **RGB only**. The aligned depth map is available through
+the common dataset adapter for sample bookkeeping, but no depth, point cloud,
+voxel, mesh, or other 3D representation is passed to the network. This makes
+later depth/3D variants attributable to their added representation rather than
+to a changing baseline.
+
+The implementation is [`train_v1_rgb_segformer.py`](train_v1_rgb_segformer.py)
+with one configuration per dataset:
+
+```bash
+python train_v1_rgb_segformer.py --config configs/v1_rgb_segformer_nyuv2.yaml
+python train_v1_rgb_segformer.py --config configs/v1_rgb_segformer_sunrgbd.yaml
+```
+
+Each configuration runs one full training epoch at 480×480 with batch size 4,
+then evaluates mIoU, pixel accuracy, and per-class IoU. The one-epoch setting is
+for fast architecture screening; it is not a final performance claim. Use
+`--no-pretrained` only for a local smoke test; the actual comparison should use
+the configured pretrained `nvidia/segformer-b0-finetuned-ade-512-512`
+checkpoint (the ADE classifier layer is replaced for the target class count).
+
+> **Observation:** V1 answers the control question “how far does RGB alone go?”;
+> a 3D representation is useful only if a matched later version improves over
+> this baseline under the same split and evaluation protocol.
 
 ## 1. Visual atlas: Cat3D and RGB-D grids
 

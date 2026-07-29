@@ -1,0 +1,277 @@
+"""V1 RGB-only semantic-segmentation baseline for the 3D study.
+
+This is deliberately a control model: SegFormer-B0 receives RGB only. The
+depth map is loaded by the common RGB-D adapter for sample alignment, but it is
+not passed to the model. Later versions can add one 3D branch at a time.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import random
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn.functional as F
+import yaml
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset
+from transformers import SegformerConfig, SegformerForSemanticSegmentation
+
+from repstudy.datasets import build_adapter
+
+
+MEAN = np.asarray([0.485, 0.456, 0.406], dtype=np.float32)
+STD = np.asarray([0.229, 0.224, 0.225], dtype=np.float32)
+
+
+def seed_everything(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+def resize_sample(sample, image_size):
+    height, width = image_size
+    rgb = np.asarray(
+        Image.fromarray(sample.rgb).resize((width, height), Image.Resampling.BILINEAR),
+        dtype=np.uint8,
+    ).astype(np.float32) / 255.0
+    label = np.asarray(
+        Image.fromarray(sample.semantic_gt.astype(np.int32), mode="I").resize(
+            (width, height), Image.Resampling.NEAREST
+        ),
+        dtype=np.int32,
+    )
+    return rgb, label
+
+
+class RGBSegmentationDataset(Dataset):
+    def __init__(self, adapter, sample_ids, image_size, num_classes, ignore_label):
+        self.adapter = adapter
+        self.sample_ids = list(sample_ids)
+        self.image_size = tuple(image_size)
+        self.num_classes = int(num_classes)
+        self.ignore_label = int(ignore_label)
+
+    def __len__(self):
+        return len(self.sample_ids)
+
+    def __getitem__(self, index):
+        sample_id = self.sample_ids[index]
+        sample = self.adapter.load(sample_id)
+        rgb, label = resize_sample(sample, self.image_size)
+        rgb = (rgb - MEAN) / STD
+
+        # Hugging Face segmentation models use 255 as the ignore target.
+        target = np.full(label.shape, 255, dtype=np.int64)
+        foreground = (label != self.ignore_label) & (label > 0)
+        class_ids = label[foreground] - 1
+        valid_class = (class_ids >= 0) & (class_ids < self.num_classes)
+        target_values = np.full(class_ids.shape, 255, dtype=np.int64)
+        target_values[valid_class] = class_ids[valid_class]
+        target[foreground] = target_values
+
+        return {
+            "pixel_values": torch.from_numpy(rgb.transpose(2, 0, 1).copy()).float(),
+            "labels": torch.from_numpy(target),
+            "name": sample_id,
+        }
+
+
+def split_ids(adapter, dataset_name, seed, val_fraction):
+    ids = list(adapter.sample_ids())
+    if dataset_name == "nyuv2":
+        return ids, None
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(ids))
+    val_count = max(1, int(round(len(ids) * val_fraction)))
+    val_indices = set(order[:val_count].tolist())
+    train_ids = [sample_id for index, sample_id in enumerate(ids) if index not in val_indices]
+    val_ids = [sample_id for index, sample_id in enumerate(ids) if index in val_indices]
+    return train_ids, val_ids
+
+
+def make_model(config, device, force_random=False):
+    model_cfg = config["model"]
+    num_classes = int(config["dataset"]["num_classes"])
+    pretrained = bool(model_cfg.get("pretrained", True)) and not force_random
+    if pretrained:
+        model = SegformerForSemanticSegmentation.from_pretrained(
+            model_cfg["name"], num_labels=num_classes, ignore_mismatched_sizes=True
+        )
+    else:
+        model_config = SegformerConfig(num_labels=num_classes)
+        model = SegformerForSemanticSegmentation(model_config)
+    model.config.semantic_loss_ignore_index = 255
+    return model.to(device)
+
+
+def update_confusion(confusion, logits, labels, num_classes):
+    prediction = F.interpolate(
+        logits, size=labels.shape[-2:], mode="bilinear", align_corners=False
+    ).argmax(1)
+    valid = labels != 255
+    truth = labels[valid].detach().cpu().numpy()
+    predicted = prediction[valid].detach().cpu().numpy()
+    if truth.size:
+        values = truth * num_classes + predicted
+        confusion += np.bincount(
+            values, minlength=num_classes * num_classes
+        ).reshape(num_classes, num_classes)
+
+
+def metric_summary(confusion):
+    intersection = np.diag(confusion).astype(np.float64)
+    union = confusion.sum(1) + confusion.sum(0) - intersection
+    iou = np.divide(intersection, union, out=np.zeros_like(intersection), where=union > 0)
+    class_present = union > 0
+    return {
+        "miou": float(iou[class_present].mean()) if class_present.any() else 0.0,
+        "pixel_accuracy": float(intersection.sum() / max(confusion.sum(), 1)),
+        "class_iou": iou.tolist(),
+        "classes_present": int(class_present.sum()),
+    }
+
+
+@torch.no_grad()
+def evaluate(model, loader, device, num_classes):
+    model.eval()
+    confusion = np.zeros((num_classes, num_classes), dtype=np.int64)
+    for batch in loader:
+        pixel_values = batch["pixel_values"].to(device, non_blocking=True)
+        labels = batch["labels"].to(device, non_blocking=True)
+        output = model(pixel_values=pixel_values)
+        update_confusion(confusion, output.logits, labels, num_classes)
+    model.train()
+    return metric_summary(confusion)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", required=True)
+    parser.add_argument("--max-train-samples", type=int, default=None)
+    parser.add_argument("--max-val-samples", type=int, default=None)
+    parser.add_argument("--image-size", type=int, nargs=2, default=None)
+    parser.add_argument(
+        "--num-workers", type=int, default=None,
+        help="Override DataLoader workers (use 0 for notebook/Windows CPU smoke tests).",
+    )
+    parser.add_argument("--no-pretrained", action="store_true")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    with open(args.config, encoding="utf-8") as handle:
+        config = yaml.safe_load(handle)
+    dataset_cfg = config["dataset"]
+    training_cfg = config["training"]
+    evaluation_cfg = config.get("evaluation", {})
+    seed = int(training_cfg.get("seed", 42))
+    seed_everything(seed)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if device.type == "cuda":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
+
+    dataset_name = dataset_cfg["name"].lower()
+    adapter_cfg = dict(dataset_cfg)
+    adapter_cfg["split"] = dataset_cfg.get("train_split", dataset_cfg.get("split", "all"))
+    train_adapter = build_adapter(adapter_cfg)
+
+    if dataset_name == "nyuv2":
+        val_cfg = dict(dataset_cfg)
+        val_cfg["split"] = dataset_cfg.get("val_split", "test")
+        val_adapter = build_adapter(val_cfg)
+        train_ids = train_adapter.sample_ids()
+        val_ids = val_adapter.sample_ids()
+    else:
+        train_ids, val_ids = split_ids(
+            train_adapter, dataset_name, seed, float(evaluation_cfg.get("val_fraction", 0.2))
+        )
+        val_adapter = train_adapter
+
+    if args.max_train_samples is not None:
+        train_ids = train_ids[: args.max_train_samples]
+    if args.max_val_samples is not None and val_ids is not None:
+        val_ids = val_ids[: args.max_val_samples]
+
+    image_size = tuple(args.image_size or training_cfg.get("image_size", [480, 480]))
+    num_classes = int(dataset_cfg["num_classes"])
+    ignore_label = int(dataset_cfg.get("ignore_label", 0))
+    train_set = RGBSegmentationDataset(
+        train_adapter, train_ids, image_size, num_classes, ignore_label
+    )
+    val_set = RGBSegmentationDataset(
+        val_adapter, val_ids, image_size, num_classes, ignore_label
+    ) if val_ids else None
+    workers = int(
+        args.num_workers if args.num_workers is not None else training_cfg.get("num_workers", 0)
+    )
+    common_loader = {
+        "num_workers": workers,
+        "pin_memory": device.type == "cuda",
+    }
+    train_loader = DataLoader(
+        train_set, batch_size=int(training_cfg.get("batch_size", 4)),
+        shuffle=True, drop_last=False, **common_loader
+    )
+    val_loader = DataLoader(
+        val_set, batch_size=int(evaluation_cfg.get("batch_size", 4)),
+        shuffle=False, **common_loader
+    ) if val_set else None
+
+    model = make_model(config, device, force_random=args.no_pretrained)
+    optimizer = torch.optim.AdamW(
+        model.parameters(), lr=float(training_cfg.get("learning_rate", 6e-5)),
+        weight_decay=float(training_cfg.get("weight_decay", 0.01))
+    )
+    use_amp = bool(training_cfg.get("use_amp", True) and device.type == "cuda")
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+
+    print(f"V1 RGB SegFormer-B0 | dataset={dataset_name} | device={device}")
+    print(f"train={len(train_set)} val={len(val_set) if val_set else 0} image_size={image_size}")
+    print(f"parameters={sum(parameter.numel() for parameter in model.parameters()):,}")
+
+    model.train()
+    train_loss = []
+    for epoch in range(int(training_cfg.get("epochs", 1))):
+        for batch in train_loader:
+            optimizer.zero_grad(set_to_none=True)
+            pixel_values = batch["pixel_values"].to(device, non_blocking=True)
+            labels = batch["labels"].to(device, non_blocking=True)
+            with torch.autocast(device_type=device.type, enabled=use_amp):
+                output = model(pixel_values=pixel_values, labels=labels)
+                loss = output.loss
+            if not torch.isfinite(loss):
+                raise FloatingPointError(f"Non-finite V1 loss at epoch {epoch}")
+            scaler.scale(loss).backward()
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+            scaler.step(optimizer)
+            scaler.update()
+            train_loss.append(float(loss.detach().cpu()))
+        print(f"epoch={epoch + 1} train_loss={np.mean(train_loss):.6f}")
+
+    metrics = evaluate(model, val_loader, device, num_classes) if val_loader else {}
+    if metrics:
+        print(f"val_mIoU={metrics['miou']:.6f} pixel_accuracy={metrics['pixel_accuracy']:.6f}")
+
+    output_root = Path(config["paths"]["output_root"])
+    output_root.mkdir(parents=True, exist_ok=True)
+    torch.save({"model_state_dict": model.state_dict(), "config": config, "metrics": metrics}, output_root / "v1_rgb_segformer.pth")
+    with open(output_root / "metrics.json", "w", encoding="utf-8") as handle:
+        json.dump({"dataset": dataset_name, "train_samples": len(train_set),
+                   "val_samples": len(val_set) if val_set else 0,
+                   "mean_train_loss": float(np.mean(train_loss)), "metrics": metrics}, handle, indent=2)
+    print(f"saved={output_root}")
+
+
+if __name__ == "__main__":
+    main()
