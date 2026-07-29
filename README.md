@@ -48,6 +48,20 @@ for fast architecture screening; it is not a final performance claim. Use
 the configured pretrained `nvidia/segformer-b0-finetuned-ade-512-512`
 checkpoint (the ADE classifier layer is replaced for the target class count).
 
+Every completed run also writes a qualitative validation grid containing RGB,
+ground truth, prediction, and correct/wrong/ignored error panels. For an
+already-trained checkpoint, regenerate the grid without retraining:
+
+```bash
+python visualize_v1_segformer.py \
+  --config configs/v1_rgb_segformer_nyuv2.yaml
+python visualize_v1_segformer.py \
+  --config configs/v1_rgb_segformer_sunrgbd.yaml
+```
+
+The PNG is stored beside the checkpoint under
+`outputs/segmentation/<experiment>/`.
+
 > **Observation:** V1 answers the control question “how far does RGB alone go?”;
 > a 3D representation is useful only if a matched later version improves over
 > this baseline under the same split and evaluation protocol.

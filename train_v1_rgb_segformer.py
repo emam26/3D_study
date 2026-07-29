@@ -138,6 +138,81 @@ def metric_summary(confusion):
     }
 
 
+def _colorize_labels(labels, num_classes, colormap):
+    """Render contiguous class IDs as an RGB image; 255 is shown as black."""
+    labels = np.asarray(labels)
+    image = np.zeros((*labels.shape, 3), dtype=np.float32)
+    valid = (labels >= 0) & (labels < num_classes)
+    if valid.any():
+        image[valid] = colormap(labels[valid])[:, :3]
+    return image
+
+
+@torch.no_grad()
+def save_qualitative_grid(model, loader, device, num_classes, output_path, max_samples=8):
+    """Save RGB/GT/prediction/error rows for a small deterministic validation subset."""
+    if loader is None or max_samples <= 0:
+        return None
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    model.eval()
+    colormap = plt.get_cmap("turbo", num_classes)
+    rows = []
+    collected = 0
+    for batch in loader:
+        pixel_values = batch["pixel_values"].to(device, non_blocking=True)
+        labels = batch["labels"].to(device, non_blocking=True)
+        output = model(pixel_values=pixel_values)
+        predictions = F.interpolate(
+            output.logits, size=labels.shape[-2:], mode="bilinear", align_corners=False
+        ).argmax(1)
+        rgb_batch = pixel_values.detach().cpu().numpy().transpose(0, 2, 3, 1)
+        rgb_batch = np.clip(rgb_batch * STD + MEAN, 0.0, 1.0)
+        labels_np = labels.detach().cpu().numpy()
+        predictions_np = predictions.detach().cpu().numpy()
+        for rgb, truth, prediction in zip(rgb_batch, labels_np, predictions_np):
+            valid = truth != 255
+            error = np.zeros((*truth.shape, 3), dtype=np.float32)
+            error[~valid] = (0.25, 0.25, 0.25)
+            error[valid & (prediction == truth)] = (0.15, 0.75, 0.25)
+            error[valid & (prediction != truth)] = (0.90, 0.15, 0.10)
+            rows.append((rgb, truth, prediction, error))
+            collected += 1
+            if collected >= max_samples:
+                break
+        if collected >= max_samples:
+            break
+    model.train()
+    if not rows:
+        return None
+
+    columns = ("RGB", "Ground truth", "Prediction", "Error map")
+    figure, axes = plt.subplots(
+        len(rows), len(columns), figsize=(12, max(3.0 * len(rows), 3.0)), squeeze=False
+    )
+    for row_index, (rgb, truth, prediction, error) in enumerate(rows):
+        images = (
+            rgb,
+            _colorize_labels(truth, num_classes, colormap),
+            _colorize_labels(prediction, num_classes, colormap),
+            error,
+        )
+        for column_index, (axis, image) in enumerate(zip(axes[row_index], images)):
+            axis.imshow(image)
+            axis.axis("off")
+            if row_index == 0:
+                axis.set_title(columns[column_index])
+    figure.tight_layout(pad=0.8)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    figure.savefig(output_path, dpi=160, bbox_inches="tight")
+    plt.close(figure)
+    return str(output_path)
+
+
 @torch.no_grad()
 def evaluate(model, loader, device, num_classes):
     model.eval()
@@ -161,6 +236,8 @@ def parse_args():
         "--num-workers", type=int, default=None,
         help="Override DataLoader workers (use 0 for notebook/Windows CPU smoke tests).",
     )
+    parser.add_argument("--num-visual-samples", type=int, default=8)
+    parser.add_argument("--no-visualization", action="store_true")
     parser.add_argument("--no-pretrained", action="store_true")
     return parser.parse_args()
 
@@ -266,10 +343,20 @@ def main():
     output_root = Path(config["paths"]["output_root"])
     output_root.mkdir(parents=True, exist_ok=True)
     torch.save({"model_state_dict": model.state_dict(), "config": config, "metrics": metrics}, output_root / "v1_rgb_segformer.pth")
+    visualization_path = None
+    if not args.no_visualization:
+        visualization_path = save_qualitative_grid(
+            model, val_loader, device, num_classes,
+            output_root / f"{dataset_name}_qualitative_grid.png",
+            max_samples=args.num_visual_samples,
+        )
+        if visualization_path:
+            print(f"visualization={visualization_path}")
     with open(output_root / "metrics.json", "w", encoding="utf-8") as handle:
         json.dump({"dataset": dataset_name, "train_samples": len(train_set),
                    "val_samples": len(val_set) if val_set else 0,
-                   "mean_train_loss": float(np.mean(train_loss)), "metrics": metrics}, handle, indent=2)
+                   "mean_train_loss": float(np.mean(train_loss)), "metrics": metrics,
+                   "visualization": visualization_path}, handle, indent=2)
     print(f"saved={output_root}")
 
 
