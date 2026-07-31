@@ -12,21 +12,21 @@ The deterministic representation study remains the primary 3D analysis. These
 
 - **Datasets:** NYUv2 and SUN RGB-D.
 - **Input:** 480 x 480 training/evaluation tensors; RGB and depth remain aligned.
-- **Training budget:** one full epoch, batch size 4, fixed seed 42.
+- **Training budget:** five full epochs, batch size 4, fixed seed 42.
 - **Metrics:** mIoU, pixel accuracy, per-class IoU, parameter count, runtime,
   and a qualitative RGB/ground-truth/prediction/error grid.
 - **Comparison plots:** metric heatmap, accuracy-versus-parameter Pareto plot,
   and fixed-sample qualitative comparison grids.
 - **Fairness rule:** change one primary architectural factor at a time whenever
   possible; keep the split, image size, batch size, and evaluation code fixed.
-- **Interpretation:** one epoch ranks candidates quickly; it is not a final
-  accuracy benchmark.
+- **Interpretation:** five epochs provide a stronger screening signal; they are
+  still not a final long-training accuracy benchmark.
 
 ## Version matrix
 
 | Version | Primary change | Main components | Status |
 | --- | --- | --- | --- |
-| V1 | RGB control | SegFormer-B0, pretrained encoder/decoder | **Implemented; NYUv2 run recorded** |
+| V1 | RGB control | SegFormer-B0, pretrained encoder/decoder | **Implemented; 5-epoch run pending** |
 | V2 | RGB encoder | ResNet-50 + DeepLabV3+ head | Planned |
 | V3 | RGB encoder | Swin-T + UPerNet head | Planned |
 | V4 | RGB foundation encoder | DINOv2 ViT-B + DPT decoder | Planned |
@@ -57,7 +57,9 @@ The deterministic representation study remains the primary 3D analysis. These
 
 V1 is the RGB-only control: the aligned depth map is loaded only for sample
 alignment and is not provided to the model. It is implemented in
-`train_v1_rgb_segformer.py` with separate NYUv2 and SUN RGB-D configurations.
+`train_v1_rgb_segformer.py` with dedicated five-epoch NYUv2 and SUN RGB-D
+configurations. The earlier one-epoch configurations are retained as
+historical controls.
 Each run writes a checkpoint, `metrics.json`, and a qualitative grid under
 `outputs/segmentation/<experiment>/`. The checkpoint-only visualization utility
 is `visualize_v1_segformer.py`.
