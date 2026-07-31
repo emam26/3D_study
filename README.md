@@ -11,10 +11,12 @@ The repository contains two clearly separated tracks:
 | Track | Main question | Current status |
 | --- | --- | --- |
 | Deterministic 3D representation study | Which visible RGB-D representation gives the best geometry, coverage, boundary quality, and efficiency? | Main 10-image-per-dataset analysis completed |
-| Neural segmentation screening | Which RGB encoder/decoder combination is a useful control before adding depth or 3D? | V1 RGB-only SegFormer pilot |
+| 26-version neural architecture screening | Which encoder, depth strategy, 3D representation, decoder, loss, and training mechanism is most useful for semantic segmentation? | V1 implemented; V2-V26 planned |
 
 The neural track does not replace the representation study. It provides a
 controlled semantic-segmentation benchmark for later representation variants.
+The complete version matrix is documented in
+[`docs/architecture_screening_plan.md`](docs/architecture_screening_plan.md).
 
 ## At a glance
 
@@ -36,7 +38,8 @@ controlled semantic-segmentation benchmark for later representation variants.
 
 ### V1 RGB SegFormer baseline
 
-V1 is the control model for the planned architecture comparison:
+V1 is the first of the 26 planned architecture configurations and the control
+model for the comparison:
 
 ```text
 RGB image → SegFormer-B0 encoder/decoder → semantic logits
