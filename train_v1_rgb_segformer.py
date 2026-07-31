@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import time
 from pathlib import Path
 
 import numpy as np
@@ -313,9 +314,11 @@ def main():
     scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
 
     print(f"V1 RGB SegFormer-B0 | dataset={dataset_name} | device={device}")
+    parameter_count = sum(parameter.numel() for parameter in model.parameters())
     print(f"train={len(train_set)} val={len(val_set) if val_set else 0} image_size={image_size}")
-    print(f"parameters={sum(parameter.numel() for parameter in model.parameters()):,}")
+    print(f"parameters={parameter_count:,}")
 
+    started = time.perf_counter()
     model.train()
     train_loss = []
     for epoch in range(int(training_cfg.get("epochs", 1))):
@@ -336,7 +339,9 @@ def main():
             train_loss.append(float(loss.detach().cpu()))
         print(f"epoch={epoch + 1} train_loss={np.mean(train_loss):.6f}")
 
+    evaluation_started = time.perf_counter()
     metrics = evaluate(model, val_loader, device, num_classes) if val_loader else {}
+    evaluation_seconds = time.perf_counter() - evaluation_started
     if metrics:
         print(f"val_mIoU={metrics['miou']:.6f} pixel_accuracy={metrics['pixel_accuracy']:.6f}")
 
@@ -356,7 +361,11 @@ def main():
         json.dump({"dataset": dataset_name, "train_samples": len(train_set),
                    "val_samples": len(val_set) if val_set else 0,
                    "mean_train_loss": float(np.mean(train_loss)), "metrics": metrics,
-                   "visualization": visualization_path}, handle, indent=2)
+                   "visualization": visualization_path,
+                   "parameters": int(parameter_count),
+                   "evaluation_seconds": round(evaluation_seconds, 3),
+                   "total_runtime_seconds": round(time.perf_counter() - started, 3)},
+                  handle, indent=2)
     print(f"saved={output_root}")
 
 

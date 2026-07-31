@@ -75,6 +75,10 @@ def main():
             "visualization": str(visualization_path),
         }
 
+    subprocess.run(
+        [sys.executable, "plot_architecture_comparison.py"],
+        cwd=root, env=env, check=True,
+    )
     summary_path = root / "outputs" / "segmentation" / "v1_run_summary.json"
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     with summary_path.open("w", encoding="utf-8") as handle:
