@@ -15,6 +15,8 @@ The deterministic representation study remains the primary 3D analysis. These
 - **Training budget:** one full epoch, batch size 4, fixed seed 42.
 - **Metrics:** mIoU, pixel accuracy, per-class IoU, parameter count, runtime,
   and a qualitative RGB/ground-truth/prediction/error grid.
+- **Comparison plots:** metric heatmap, accuracy-versus-parameter Pareto plot,
+  and fixed-sample qualitative comparison grids.
 - **Fairness rule:** change one primary architectural factor at a time whenever
   possible; keep the split, image size, batch size, and evaluation code fixed.
 - **Interpretation:** one epoch ranks candidates quickly; it is not a final

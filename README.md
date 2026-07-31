@@ -90,6 +90,17 @@ python visualize_v1_segformer.py \
 The PNG is stored beside the checkpoint under
 `outputs/segmentation/<experiment>/`.
 
+For the architecture study, summarize all completed versions with:
+
+```bash
+python plot_architecture_comparison.py
+```
+
+This writes a metric heatmap, an accuracy-versus-parameter Pareto plot, and
+dataset-specific qualitative comparison grids under
+`outputs/segmentation/architecture_plots/`. Only completed versions are shown;
+missing V2-V26 results are never fabricated.
+
 > **Observation:** V1 answers the control question “how far does RGB alone go?”;
 > a 3D representation is useful only if a matched later version improves over
 > this baseline under the same split and evaluation protocol.
