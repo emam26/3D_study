@@ -1,0 +1,32 @@
+experiment_name: "v1_rgb_segformer_5ep_nyuv2"
+
+dataset:
+  name: "nyuv2"
+  root: "data/nyu"
+  train_split: "train"
+  val_split: "test"
+  num_classes: 40
+  ignore_label: 0
+  intrinsics: [518.857901, 519.469611, 325.582449, 253.736166]
+
+model:
+  name: "nvidia/segformer-b0-finetuned-ade-512-512"
+  pretrained: true
+
+training:
+  epochs: 5
+  batch_size: 4
+  num_workers: 4
+  image_size: [480, 480]
+  learning_rate: 0.00006
+  weight_decay: 0.01
+  use_amp: true
+  seed: 42
+  evaluate_each_epoch: true
+
+evaluation:
+  batch_size: 4
+  val_fraction: 0.2
+
+paths:
+  output_root: "outputs/segmentation/v1_rgb_segformer_5ep_nyuv2"

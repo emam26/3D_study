@@ -49,17 +49,26 @@ def discover_records(output_root):
             "pixel_accuracy": float(metrics.get("pixel_accuracy", np.nan)),
             "parameters": float(data.get("parameters", np.nan)),
             "runtime_seconds": float(data.get("total_runtime_seconds", np.nan)),
+            "epochs": int(data.get("epochs", 1)),
             "metrics_path": str(metrics_path),
             "visualization": data.get("visualization"),
             "visualization_path": parent / f"{dataset}_qualitative_grid.png",
         })
-    return records
+    # Keep the most complete run when a version has both a screening and a
+    # historical smoke/one-epoch result for the same dataset.
+    selected = {}
+    for record in records:
+        key = (record["version"], record["dataset"])
+        previous = selected.get(key)
+        if previous is None or record["epochs"] >= previous["epochs"]:
+            selected[key] = record
+    return list(selected.values())
 
 
 def write_summary(records, output_path):
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fields = ["version", "experiment", "dataset", "miou", "pixel_accuracy",
-              "parameters", "runtime_seconds", "metrics_path"]
+    fields = ["version", "experiment", "dataset", "epochs", "miou",
+              "pixel_accuracy", "parameters", "runtime_seconds", "metrics_path"]
     with output_path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields)
         writer.writeheader()

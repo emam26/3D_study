@@ -8,6 +8,7 @@ not passed to the model. Later versions can add one 3D branch at a time.
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import json
 import random
 import time
@@ -321,7 +322,16 @@ def main():
     started = time.perf_counter()
     model.train()
     train_loss = []
-    for epoch in range(int(training_cfg.get("epochs", 1))):
+    history = []
+    best_epoch = 0
+    best_metrics = {}
+    best_miou = -float("inf")
+    best_state = None
+    evaluation_seconds = 0.0
+    evaluate_each_epoch = bool(training_cfg.get("evaluate_each_epoch", True))
+    epochs = int(training_cfg.get("epochs", 1))
+    for epoch in range(epochs):
+        epoch_losses = []
         for batch in train_loader:
             optimizer.zero_grad(set_to_none=True)
             pixel_values = batch["pixel_values"].to(device, non_blocking=True)
@@ -336,18 +346,58 @@ def main():
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             scaler.step(optimizer)
             scaler.update()
-            train_loss.append(float(loss.detach().cpu()))
-        print(f"epoch={epoch + 1} train_loss={np.mean(train_loss):.6f}")
+            loss_value = float(loss.detach().cpu())
+            train_loss.append(loss_value)
+            epoch_losses.append(loss_value)
+        epoch_metrics = {}
+        if val_loader and evaluate_each_epoch:
+            evaluation_started = time.perf_counter()
+            epoch_metrics = evaluate(model, val_loader, device, num_classes)
+            evaluation_seconds += time.perf_counter() - evaluation_started
+        history.append({
+            "epoch": epoch + 1,
+            "train_loss": float(np.mean(epoch_losses)) if epoch_losses else None,
+            "metrics": epoch_metrics,
+        })
+        if epoch_metrics:
+            print(
+                f"epoch={epoch + 1} train_loss={np.mean(epoch_losses):.6f} "
+                f"val_mIoU={epoch_metrics['miou']:.6f} "
+                f"pixel_accuracy={epoch_metrics['pixel_accuracy']:.6f}"
+            )
+            if epoch_metrics["miou"] > best_miou:
+                best_miou = epoch_metrics["miou"]
+                best_epoch = epoch + 1
+                best_metrics = epoch_metrics
+                best_state = deepcopy(model.state_dict())
+        else:
+            print(f"epoch={epoch + 1} train_loss={np.mean(epoch_losses):.6f}")
 
-    evaluation_started = time.perf_counter()
-    metrics = evaluate(model, val_loader, device, num_classes) if val_loader else {}
-    evaluation_seconds = time.perf_counter() - evaluation_started
+    if not evaluate_each_epoch and val_loader:
+        evaluation_started = time.perf_counter()
+        best_metrics = evaluate(model, val_loader, device, num_classes)
+        evaluation_seconds += time.perf_counter() - evaluation_started
+        best_epoch = epochs
+        best_miou = best_metrics.get("miou", -float("inf"))
+        best_state = deepcopy(model.state_dict())
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    metrics = best_metrics
     if metrics:
-        print(f"val_mIoU={metrics['miou']:.6f} pixel_accuracy={metrics['pixel_accuracy']:.6f}")
+        print(f"best_epoch={best_epoch} best_val_mIoU={metrics['miou']:.6f}")
 
     output_root = Path(config["paths"]["output_root"])
     output_root.mkdir(parents=True, exist_ok=True)
-    torch.save({"model_state_dict": model.state_dict(), "config": config, "metrics": metrics}, output_root / "v1_rgb_segformer.pth")
+    checkpoint = {
+        "model_state_dict": model.state_dict(),
+        "config": config,
+        "metrics": metrics,
+        "best_epoch": best_epoch,
+        "history": history,
+    }
+    torch.save(checkpoint, output_root / "v1_rgb_segformer.pth")
+    with open(output_root / "history.json", "w", encoding="utf-8") as handle:
+        json.dump(history, handle, indent=2)
     visualization_path = None
     if not args.no_visualization:
         visualization_path = save_qualitative_grid(
@@ -363,6 +413,9 @@ def main():
                    "mean_train_loss": float(np.mean(train_loss)), "metrics": metrics,
                    "visualization": visualization_path,
                    "parameters": int(parameter_count),
+                   "epochs": epochs,
+                   "best_epoch": int(best_epoch),
+                   "history": history,
                    "evaluation_seconds": round(evaluation_seconds, 3),
                    "total_runtime_seconds": round(time.perf_counter() - started, 3)},
                   handle, indent=2)

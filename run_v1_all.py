@@ -2,7 +2,8 @@
 
 This wrapper keeps the two dataset runs consistent and verifies that each run
 produced a checkpoint, metrics JSON, and qualitative grid. Use ``--smoke`` only
-for a fast local pipeline check; the default is the full one-epoch protocol.
+for a fast local pipeline check; the default is the full five-epoch screening
+protocol.
 """
 
 from __future__ import annotations
@@ -14,10 +15,12 @@ import sys
 import time
 from pathlib import Path
 
+import yaml
+
 
 CONFIGS = (
-    "configs/v1_rgb_segformer_nyuv2.yaml",
-    "configs/v1_rgb_segformer_sunrgbd.yaml",
+    "configs/v1_rgb_segformer_nyuv2_5ep.yaml",
+    "configs/v1_rgb_segformer_sunrgbd_5ep.yaml",
 )
 
 
@@ -58,12 +61,15 @@ def main():
         subprocess.run(command, cwd=root, env=env, check=True)
         elapsed = time.perf_counter() - started
 
-        dataset_name = "nyuv2" if "nyuv2" in config else "sunrgbd"
-        output_root = root / "outputs" / "segmentation" / f"v1_rgb_segformer_{dataset_name}"
+        with (root / config).open(encoding="utf-8") as handle:
+            config_data = yaml.safe_load(handle)
+        dataset_name = str(config_data["dataset"]["name"]).lower()
+        output_root = root / config_data["paths"]["output_root"]
         metrics_path = output_root / "metrics.json"
+        history_path = output_root / "history.json"
         checkpoint_path = output_root / "v1_rgb_segformer.pth"
         visualization_path = output_root / f"{dataset_name}_qualitative_grid.png"
-        for path in (metrics_path, checkpoint_path, visualization_path):
+        for path in (metrics_path, history_path, checkpoint_path, visualization_path):
             if not path.exists():
                 raise FileNotFoundError(f"V1 run did not produce expected output: {path}")
         with metrics_path.open(encoding="utf-8") as handle:
