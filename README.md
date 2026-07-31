@@ -59,6 +59,16 @@ python train_v1_rgb_segformer.py --config configs/v1_rgb_segformer_nyuv2.yaml
 python train_v1_rgb_segformer.py --config configs/v1_rgb_segformer_sunrgbd.yaml
 ```
 
+For the complete two-dataset run, use the wrapper that trains both datasets,
+verifies all expected artifacts, and writes a combined summary:
+
+```bash
+python run_v1_all.py
+```
+
+The current reported metrics are documented in
+[`docs/v1_results.md`](docs/v1_results.md).
+
 Each configuration runs one full training epoch at 480×480 with batch size 4,
 then evaluates mIoU, pixel accuracy, and per-class IoU. The one-epoch setting is
 for fast architecture screening; it is not a final performance claim. Use

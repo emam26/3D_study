@@ -24,7 +24,7 @@ The deterministic representation study remains the primary 3D analysis. These
 
 | Version | Primary change | Main components | Status |
 | --- | --- | --- | --- |
-| V1 | RGB control | SegFormer-B0, pretrained encoder/decoder | **Implemented** |
+| V1 | RGB control | SegFormer-B0, pretrained encoder/decoder | **Implemented; NYUv2 run recorded** |
 | V2 | RGB encoder | ResNet-50 + DeepLabV3+ head | Planned |
 | V3 | RGB encoder | Swin-T + UPerNet head | Planned |
 | V4 | RGB foundation encoder | DINOv2 ViT-B + DPT decoder | Planned |
