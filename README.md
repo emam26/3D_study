@@ -4,24 +4,20 @@ This is a standalone research project for studying how RGB-D scene information
 can be represented and evaluated on NYUv2 and SUN RGB-D. It is intentionally
 separate from the other model-development repositories.
 
-## Project map
+## Project scope
 
-The repository contains two clearly separated tracks:
+This repository contains one focused study: a deterministic comparison of 3D
+representations derived from visible RGB-D geometry. Its central question is:
 
-| Track | Main question | Current status |
-| --- | --- | --- |
-| Deterministic 3D representation study | Which visible RGB-D representation gives the best geometry, coverage, boundary quality, and efficiency? | Main 10-image-per-dataset analysis completed |
-| 26-version neural architecture screening | Which encoder, depth strategy, 3D representation, decoder, loss, and training mechanism is most useful for semantic segmentation? | V1 implemented; V2-V26 planned |
+> Which representation best preserves geometry, image coverage, semantic
+> boundaries, and efficiency under a fixed 10-image-per-dataset pilot?
 
-The neural track does not replace the representation study. It provides a
-controlled semantic-segmentation benchmark for later representation variants.
-The complete version matrix is documented in
-[`docs/architecture_screening_plan.md`](docs/architecture_screening_plan.md).
+No segmentation model is trained in this study; semantic ground truth is used
+only for oracle labeling and evaluation of the geometric representations.
 
 ## Contents
 
 - [At a glance](#at-a-glance)
-- [Neural segmentation screening track](#neural-segmentation-screening-track)
 - [Deterministic 3D representation track](#deterministic-3d-representation-track)
   - [Mathematical and conceptual foundations](#mathematical-and-conceptual-foundations)
   - [Visual atlas](#visual-atlas-cat3d-and-rgb-d-grids)
@@ -40,86 +36,12 @@ The complete version matrix is documented in
   included in the deterministic ranking.
 - **Evaluation:** full-label mIoU, valid-depth mIoU, coverage, boundary F1,
   purity, construction time, element count, and viewpoint stability.
-- **Scope:** deterministic visible RGB-D geometry plus a clearly separated
-  RGB-only segmentation pilot. The deterministic representation study remains
-  the main analysis; the neural pilot is used only to screen architecture
-  combinations.
+- **Scope:** deterministic visible RGB-D geometry only. Labels support oracle
+  evaluation but never construct the primary representations.
 
 > **Observation:** The study identifies which representation is useful for a
 > particular quality, coverage, boundary, or efficiency goal; it does not claim
 > that one representation is universally best.
-
-## Neural segmentation screening track
-
-### V1 RGB SegFormer baseline
-
-V1 is the first of the 26 planned architecture configurations and the control
-model for the comparison:
-
-```text
-RGB image → SegFormer-B0 encoder/decoder → semantic logits
-```
-
-It intentionally uses **RGB only**. The aligned depth map is available through
-the common dataset adapter for sample bookkeeping, but no depth, point cloud,
-voxel, mesh, or other 3D representation is passed to the network. This makes
-later depth/3D variants attributable to their added representation rather than
-to a changing baseline.
-
-The implementation is [`train_v1_rgb_segformer.py`](train_v1_rgb_segformer.py)
-with one configuration per dataset:
-
-```bash
-python train_v1_rgb_segformer.py --config configs/v1_rgb_segformer_nyuv2_5ep.yaml
-python train_v1_rgb_segformer.py --config configs/v1_rgb_segformer_sunrgbd_5ep.yaml
-```
-
-For the complete two-dataset run, use the wrapper that trains both datasets,
-verifies all expected artifacts, and writes a combined summary:
-
-```bash
-python run_v1_all.py
-```
-
-The current reported metrics are documented in
-[`docs/v1_results.md`](docs/v1_results.md).
-
-Each screening configuration runs five full training epochs at 480×480 with batch size 4,
-then evaluates mIoU, pixel accuracy, and per-class IoU. The one-epoch
-configuration is retained only as a historical quick baseline;
-five epochs provide a more stable screening comparison. Use
-`--no-pretrained` only for a local smoke test; the actual comparison should use
-the configured pretrained `nvidia/segformer-b0-finetuned-ade-512-512`
-checkpoint (the ADE classifier layer is replaced for the target class count).
-
-Every completed run also writes a qualitative validation grid containing RGB,
-ground truth, prediction, and correct/wrong/ignored error panels. For an
-already-trained checkpoint, regenerate the grid without retraining:
-
-```bash
-python visualize_v1_segformer.py \
-  --config configs/v1_rgb_segformer_nyuv2_5ep.yaml
-python visualize_v1_segformer.py \
-  --config configs/v1_rgb_segformer_sunrgbd_5ep.yaml
-```
-
-The PNG is stored beside the checkpoint under
-`outputs/segmentation/<experiment>/`.
-
-For the architecture study, summarize all completed versions with:
-
-```bash
-python plot_architecture_comparison.py
-```
-
-This writes a metric heatmap, an accuracy-versus-parameter Pareto plot, and
-dataset-specific qualitative comparison grids under
-`outputs/segmentation/architecture_plots/`. Only completed versions are shown;
-missing V2-V26 results are never fabricated.
-
-> **Observation:** V1 answers the control question “how far does RGB alone go?”;
-> a 3D representation is useful only if a matched later version improves over
-> this baseline under the same split and evaluation protocol.
 
 ## Deterministic 3D representation track
 
@@ -1034,13 +956,13 @@ covering only a small fraction of the image.
 > **Observation:** Full-label mIoU is the safest single dense-image summary,
 > but coverage and boundary F1 explain why that score changes.
 
-### Learning note and repository policy
+### Representation bookkeeping and repository policy
 
 Each representation keeps the source image pixels that contributed to each
 3D element. That bookkeeping is what makes deterministic oracle labeling and
-the missing-coverage measurement possible. The deterministic track uses no
-neural network; the separate V1 screening track is the only learned baseline
-currently included.
+the missing-coverage measurement possible. The deterministic study uses no
+neural network. Neural fields are explained as mathematical future work only;
+they are not trained or included in the current ranking.
 
 Generated data, datasets, credentials, and checkpoints will remain outside Git.
 
