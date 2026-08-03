@@ -1,4 +1,8 @@
-# Representation study implementation plan
+# Core representation study protocol
+
+This document defines the scientific boundaries and evaluation rules used by
+the 10-image NYUv2 and 10-image SUN RGB-D pilot. For figures, results, and run
+commands, start with the repository `README.md`.
 
 ## Scientific scope
 
@@ -15,7 +19,7 @@ unseen geometry.
 Coverage is always reported next to Track A so a low-coverage representation
 cannot appear strong by evaluating only its easiest pixels.
 
-## Implementation milestones
+## Implementation status
 
 1. **Complete:** common `RGBDSample` contract, coordinate conventions,
    NYUv2 validation, and synthetic integration tests.

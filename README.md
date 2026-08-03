@@ -1,51 +1,165 @@
-# Independent RGB-D Representation Study
+# Independent RGB-D 3D Representation Study
 
-This is a standalone research project for studying how RGB-D scene information
-can be represented and evaluated on NYUv2 and SUN RGB-D. It is intentionally
-separate from the other model-development repositories.
-
-## Project scope
-
-This repository contains one focused study: a deterministic comparison of 3D
-representations derived from visible RGB-D geometry. Its central question is:
-
-> Which representation best preserves geometry, image coverage, semantic
-> boundaries, and efficiency under a fixed 10-image-per-dataset pilot?
-
-No segmentation model is trained in this study; semantic ground truth is used
-only for oracle labeling and evaluation of the geometric representations.
+> A deterministic, visual, and quantitative comparison of nine ways to store
+> visible RGB-D geometry from NYUv2 and SUN RGB-D.
 
 ## Contents
 
-- [At a glance](#at-a-glance)
-- [Deterministic 3D representation track](#deterministic-3d-representation-track)
-  - [Mathematical and conceptual foundations](#mathematical-and-conceptual-foundations)
-  - [Visual atlas](#visual-atlas-cat3d-and-rgb-d-grids)
-  - [Extended comparison](#extended-comparison-quality-coverage-and-stability)
-  - [Small-sample follow-up experiments](#small-sample-follow-up-experiments)
-  - [Reproducibility and outputs](#reproducibility-and-outputs)
-  - [Final recommendation](#final-recommendation)
+- [Start here](#start-here)
+- [Main conclusions](#main-conclusions)
+- [Visual overview](#visual-overview)
+- [Representation cheat sheet](#representation-cheat-sheet)
+- [Mathematical and conceptual reference](#mathematical-and-conceptual-reference)
+- [Baseline benchmark and Cat3D analysis](#baseline-benchmark-and-cat3d-analysis)
+- [Extended comparison](#extended-comparison-quality-coverage-and-stability)
+- [Small-sample follow-up experiments](#small-sample-follow-up-experiments)
+- [Reproduce the study](#reproduce-the-study)
+- [How to read the metrics](#how-to-read-the-metrics)
+- [Final recommendation](#final-recommendation)
 
-## At a glance
+## Start here
 
-- **Datasets:** 10 NYUv2 images and 10 SUN RGB-D images.
-- **Representations:** point cloud, surfel, mesh, voxel, surface TSDF,
-  superpoint, graph, octree, and local descriptor.
-- **Future representation family:** neural occupancy, signed-distance, and
-  radiance fields are documented mathematically but are not yet implemented or
-  included in the deterministic ranking.
-- **Evaluation:** full-label mIoU, valid-depth mIoU, coverage, boundary F1,
-  purity, construction time, element count, and viewpoint stability.
-- **Scope:** deterministic visible RGB-D geometry only. Labels support oracle
-  evaluation but never construct the primary representations.
+### Research question
 
-> **Observation:** The study identifies which representation is useful for a
-> particular quality, coverage, boundary, or efficiency goal; it does not claim
-> that one representation is universally best.
+> Which 3D representation best preserves visible RGB-D geometry, image
+> coverage, semantic boundaries, and computational efficiency?
 
-## Deterministic 3D representation track
+The study compares the same nine representations under a fixed pilot protocol.
+It is designed to teach what each representation stores, show how it looks in
+2D and 3D, and measure where it succeeds or fails.
 
-### Mathematical and conceptual foundations
+### Experimental scope
+
+| Item | Study choice |
+| --- | --- |
+| Datasets | 10 NYUv2 images + 10 SUN RGB-D images |
+| Object sanity check | One textured Cat3D OBJ mesh |
+| Representations | Point cloud, surfel, mesh, voxel, surface-TSDF proxy, superpoint, graph, octree, descriptor |
+| Views | Original, left oblique, right oblique, elevated |
+| Quality measures | Full-label mIoU, valid-depth mIoU, coverage, boundary F1, and purity |
+| Efficiency measures | Construction time, element count, and XYZ storage proxy |
+| Learned models | None |
+
+Semantic ground truth never constructs the primary geometry. It is attached
+after construction through source-pixel bookkeeping, then used for oracle
+projection and evaluation. Neural fields are explained as future mathematical
+context but are not implemented, trained, or ranked.
+
+### Study workflow
+
+```text
+RGB + depth + intrinsics
+          |
+          v
+  Back-project valid pixels
+          |
+          v
+  Visible 3D point set
+          |
+          v
+ Build the same 9 representations
+          |
+          v
+ Attach oracle labels from source pixels
+          |
+          v
+ Render 2D + 3D + multiview outputs
+          |
+          v
+ Measure quality + coverage + boundaries + cost
+          |
+          v
+ Recommend by application objective
+```
+
+This separation is important: the experiment evaluates how a representation
+preserves measured geometry; it does not train a semantic-segmentation model.
+
+## Main conclusions
+
+| If your priority is... | Recommended representation | Pilot evidence |
+| --- | --- | --- |
+| Best general dense RGB-D representation | **Voxel** | Highest full-label mIoU: 96.4% NYUv2 and 60.3% SUN RGB-D |
+| Best semantic boundaries | **Mesh** | Highest boundary F1: 71.4% NYUv2 and 43.4% SUN RGB-D |
+| Fast full-coverage construction | **Octree** | 0.46 s/image NYUv2 and 0.38 s/image SUN RGB-D |
+| Compact full-coverage representation | **Superpoint** | About 972 NYUv2 and 904 SUN RGB-D elements |
+| Promising future direction | **Mesh + voxel + octree hybrid** | Better held-out pilot mIoU, but evaluated on only five images per dataset |
+
+<p align="center">
+  <img src="docs/figures/representation_tradeoff_overview.png" alt="Representation quality, coverage, runtime, and size trade-offs" width="100%">
+</p>
+
+> **Observation:** Voxel is the safest default in this pilot, but there is no
+> universal winner. Mesh, octree, and superpoint become preferable when the
+> objective changes to boundaries, speed, or compactness.
+
+## Visual overview
+
+### Cat3D object atlas
+
+<p align="center">
+  <img src="docs/figures/cat3d_original_plus_9_grid.png" alt="Cat3D original model plus nine 3D representations" width="100%">
+</p>
+
+> **Observation:** One object can be encoded as samples, oriented surface
+> elements, triangles, spatial cells, regions, relationships, a hierarchy, or
+> local measurements. These are different data structures, not visual filters.
+
+<p align="center">
+  <img src="docs/figures/cat3d_2d_representation_grid.png" alt="Cat3D 2D projection grid" width="85%">
+</p>
+
+> **Observation:** This second Cat3D figure is a 2D rendering of the stored 3D
+> representations. It helps compare their projected appearance; it is not an
+> additional representation.
+
+### Real RGB-D scene grids
+
+| Dataset | Camera-space 2D evaluation | Raw 3D geometry |
+| --- | --- | --- |
+| NYUv2 | <img src="docs/figures/nyuv2_2d_representation_grid.png" alt="NYUv2 2D representation grid" width="420"> | <img src="docs/figures/nyuv2_3d_representation_grid.png" alt="NYUv2 3D representation grid" width="420"> |
+| SUN RGB-D | <img src="docs/figures/sunrgbd_2d_representation_grid.png" alt="SUN RGB-D 2D representation grid" width="420"> | <img src="docs/figures/sunrgbd_3d_representation_grid.png" alt="SUN RGB-D 3D representation grid" width="420"> |
+
+> **Observation:** The 3D grid answers “what geometry is stored?” The 2D grid
+> answers “how much of the labeled image is recovered after projection?” A
+> representation must be inspected in both spaces.
+
+### What each visualization means
+
+| Visualization | What you are looking at | Is it a representation? |
+| --- | --- | --- |
+| Raw 3D grid | Points, triangles, cells, regions, edges, or descriptor-colored geometry in 3D | **Yes** |
+| 2D representation grid | The corresponding 3D structure projected back into the camera image | No; it is an evaluation view |
+| Multiview projection grid | The stored visible geometry rendered from virtual cameras | No; it tests viewpoint behavior |
+| Ground-truth panel | Dataset semantic labels used as the oracle reference | No; it is evaluation supervision |
+| Coverage/error panel | Correct, wrong, and missing pixels after projection | No; it visualizes failure modes |
+
+> **Observation:** The actual representations are the nine 3D data structures.
+> Projection, ground truth, and coverage maps explain their behavior without
+> changing the underlying geometry.
+
+## Representation cheat sheet
+
+| Representation | What it stores | Main strength | Main caution in this study |
+| --- | --- | --- | --- |
+| Point cloud | Unordered XYZ samples with RGB and normals | Simple, direct surface samples | Fixed 5,000-point budget gives sparse image coverage |
+| Surfel | Oriented disks centered on sampled points | Adds local surface orientation and footprint | Still inherits sparse sampling coverage |
+| Mesh | Vertices connected by triangle faces | Explicit surfaces and strong boundaries | Depth discontinuities require careful face rejection |
+| Voxel | Occupied cells on a regular 3D grid | Dense support and straightforward batching | Resolution controls memory and detail |
+| Surface-TSDF proxy | Sparse signed proximity values around observed surfaces | Encodes free/surface structure | This implementation is not a fully fused canonical TSDF |
+| Superpoint | Groups of nearby visible samples | Compact region-level representation | Implemented as an image-tile proxy, not learned clustering |
+| Graph | Nodes connected to geometric neighbors | Explicit local relationships | Fixed node budget remains sparse |
+| Octree | Adaptive hierarchical spatial cells | Efficient multiresolution partition | Leaf resolution varies with local density |
+| Descriptor | Local geometric feature vector per point | Compact local shape measurements | A descriptor augments points; it is not standalone geometry |
+| Neural field | Learned continuous query function | Continuous differentiable representation | Future context only; no result is reported here |
+
+Use this table for orientation, then open the reference below for the exact
+equations, implementation choices, and trade-offs.
+
+## Mathematical and conceptual reference
+
+<details>
+<summary><strong>Open the complete mathematical reference for all representations</strong></summary>
 
 This section explains every 3D representation used by the project. It
 separates three things that are easy to confuse:
@@ -87,7 +201,7 @@ Common notation:
 | \(\mathcal N_k(i)\) | k-nearest neighbors of element \(i\) |
 | \(\theta\) | Learned neural-field parameters |
 
-#### Common camera model: RGB-D back-projection
+### Common camera model: RGB-D back-projection
 
 Let a pixel be \(\tilde{\mathbf p}=(u,v,1)^\top\), its measured metric depth be
 \(z\), and the camera intrinsic matrix be
@@ -139,7 +253,7 @@ Invalid depth neighborhoods receive a zero normal in the implementation.
 > produces only the first visible surface intersected by each camera ray;
 > geometry behind that surface remains unobserved.
 
-#### 1. Point cloud
+### 1. Point cloud
 
 A point cloud is an unordered set
 
@@ -176,7 +290,7 @@ connect the points.
 quantization, but a fixed point budget gives low image coverage in this pilot
 and does not directly encode surface connectivity.
 
-#### 2. Surfel
+### 2. Surfel
 
 A surfel is an oriented surface element rather than a dimensionless point:
 
@@ -215,7 +329,7 @@ values. The baseline radius is \(r_i=0.02\) m. The optional adaptive rule uses
 raw points, but holes remain when sampling is sparse or radii are too small;
 large radii can blur boundaries and join unrelated surfaces.
 
-#### 3. Triangle mesh and mesh generation
+### 3. Triangle mesh and mesh generation
 
 A triangle mesh is
 
@@ -276,7 +390,7 @@ a watertight object or room reconstruction.
 efficient, explaining the strong boundary F1 in this pilot. Depth noise can
 create bad triangles, while conservative rejection creates holes.
 
-#### 4. Sparse voxel grid
+### 4. Sparse voxel grid
 
 A voxel grid partitions space into cubes of side length \(s\). A point receives
 integer voxel key
@@ -317,7 +431,7 @@ valid-depth support, which made them the strongest dense default in this
 pilot. Smaller \(s\) preserves detail but increases memory and runtime roughly
 cubically for a dense implementation.
 
-#### 5. Truncated Signed Distance Field (TSDF)
+### 5. Truncated Signed Distance Field (TSDF)
 
 For a closed surface \(\partial\Omega\), a signed distance field is
 
@@ -381,7 +495,7 @@ support, but it cannot perform true zero-crossing reconstruction or infer the
 unseen side of a surface. Its results must not be generalized to a fused TSDF
 reconstruction system.
 
-#### 6. Superpoint regions
+### 6. Superpoint regions
 
 A superpoint representation partitions the point set into disjoint regions:
 
@@ -420,7 +534,7 @@ geometric partitioning and should be called a superpoint proxy.
 the proxy useful for the pilot, but rectangular image tiles can merge points
 across a true 3D or semantic boundary.
 
-#### 7. k-nearest-neighbor graph
+### 7. k-nearest-neighbor graph
 
 A geometric graph is \(\mathcal G=(\mathcal V,\mathcal E)\), with point nodes
 \(\mathcal V=\{1,\ldots,N\}\) and undirected edges
@@ -455,7 +569,7 @@ study.
 learned propagation, but kNN construction and storage add cost. Euclidean kNN
 can also connect two different surfaces that happen to be spatially close.
 
-#### 8. Octree
+### 8. Octree
 
 An octree recursively divides a cube into eight children. If the root side
 length is \(L\), a node at level \(\ell\) has side length
@@ -488,7 +602,7 @@ best construction-time/full-coverage combination in this pilot. Tree traversal
 and irregular batching are more complicated than dense voxel convolution, and
 large leaves can remove thin geometric detail.
 
-#### 9. Local geometric descriptor
+### 9. Local geometric descriptor
 
 A descriptor is a feature attached to geometry; it is not a standalone surface
 unless the supporting point locations are retained. For sampled point
@@ -542,7 +656,7 @@ and can be rotation/scale normalized, but they depend strongly on neighborhood
 size, sampling density and noise. The fixed 5,000-point support causes the same
 coverage limitation as the sampled point cloud.
 
-#### 10. Neural fields: documented future representation
+### 10. Neural fields: documented future representation
 
 A neural field stores a continuous function in learned parameters rather than
 an explicit list of points, cells or faces:
@@ -606,7 +720,7 @@ and potentially high fidelity, but training can be expensive, results depend
 on scene coverage, and geometry may be difficult to edit or inspect compared
 with explicit points, voxels or meshes.
 
-#### Exact baseline settings and interpretation
+### Exact baseline settings and interpretation
 
 | Representation | Mathematical domain | Baseline in this repository | What is actually stored |
 | --- | --- | --- | --- |
@@ -635,42 +749,9 @@ structure.
 > neural field stores a learned query function. Their metrics are meaningful
 > only when resolution, coverage and construction/training budgets are reported.
 
-### Visual atlas: Cat3D and RGB-D grids
+</details>
 
-#### Cat3D 3D representation atlas
-
-<p align="center">
-  <img src="docs/figures/cat3d_original_plus_9_grid.png" alt="Cat3D original model plus nine 3D representations" width="100%">
-</p>
-
-The atlas starts with the original Cat OBJ/CAD model and then shows its nine
-derived 3D representations.
-
-> **Observation:** The same object can be stored as a surface, volume,
-> hierarchy, graph, or descriptor field; these are different data structures,
-> not merely different visual styles.
-
-#### Dataset visual overview
-
-The main generated figures appear directly after the mathematical foundations.
-The 2D grids show camera-space projections; the 3D grids show the raw geometric
-structures.
-
-| Dataset | 2D representation grid | 3D representation grid |
-| --- | --- | --- |
-| NYUv2 | <img src="docs/figures/nyuv2_2d_representation_grid.png" alt="NYUv2 2D representation grid" width="420"> | <img src="docs/figures/nyuv2_3d_representation_grid.png" alt="NYUv2 3D representation grid" width="420"> |
-| SUN RGB-D | <img src="docs/figures/sunrgbd_2d_representation_grid.png" alt="SUN RGB-D 2D representation grid" width="420"> | <img src="docs/figures/sunrgbd_3d_representation_grid.png" alt="SUN RGB-D 3D representation grid" width="420"> |
-| Cat3D OBJ | <img src="docs/figures/cat3d_2d_representation_grid.png" alt="Cat3D 2D representation grid" width="420"> | <img src="docs/figures/cat3d_original_plus_9_grid.png" alt="Cat3D original model plus nine representations" width="420"> |
-
-The Cat3D figure contains the original OBJ/CAD model plus nine derived 3D
-representations. The separate `catDog.png` RGB scene is intentionally not
-included in the output atlas.
-
-> **Observation:** A representation can look correct in 3D but still miss many
-> labeled image pixels after projection, so the 2D and 3D grids must be read
-> together.
-
-### Baseline benchmark and Cat3D analysis
+## Baseline benchmark and Cat3D analysis
 
 The pilot comparison below reports valid-depth mIoU, coverage, full-label mIoU,
 and construction time for all nine representations on both RGB-D datasets.
@@ -699,20 +780,13 @@ voxels, single-view sparse TSDFs, superpoint regions, kNN graphs, adaptive
 octrees, local geometric descriptors, and deterministic multiview projections. Ground truth is used only for oracle labeling and
 evaluation -- not to construct the primary geometry.
 
-### Extended comparison: quality, coverage, and stability
+## Extended comparison: quality, coverage, and stability
 
 The extended analysis uses all nine representation styles, all ten pilot images
 per dataset, and the four saved views (original, left oblique, right oblique,
 and elevated). It separates dense semantic fidelity from coverage, boundary
 quality, runtime, element count, image-to-image variation, and viewpoint
 robustness.
-
-<p align="center">
-  <img src="docs/figures/representation_tradeoff_overview.png" alt="Representation quality, coverage, runtime, and size trade-offs" width="100%">
-</p>
-
-> **Observation:** Higher quality generally requires more geometry or more
-> construction time; the best choice depends on the deployment objective.
 
 <p align="center">
   <img src="docs/figures/representation_rank_heatmap.png" alt="Representation ranks across quality, coverage, purity, boundary quality, runtime, and size" width="100%">
@@ -782,7 +856,7 @@ segmentation benchmark.
 > not a trained segmentation benchmark; it identifies candidates for later
 > learned-system experiments.
 
-### Small-sample follow-up experiments
+## Small-sample follow-up experiments
 
 The next experiments also use exactly ten NYUv2 and ten SUN RGB-D images. The
 same image IDs are reused across all settings, so the comparisons are paired
@@ -863,17 +937,35 @@ before making universal claims.
 > **Observation:** These are pilot experiments for comparison and debugging;
 > full-dataset evaluation is required before broad conclusions.
 
-### Reproducibility and outputs
+## Reproduce the study
 
-The first deterministic pipeline is implemented and smoke-tested on NYUv2:
-backprojection, organized point clouds, surfels, partial meshes, sparse
-voxels, single-view sparse TSDFs, superpoint regions, oracle labels,
-z-buffer rendering, coverage-aware semantic metrics, boundary metrics, kNN
-graphs, adaptive octrees, local descriptors, and virtual-camera projections.
-The fixed pilot study uses 10 images from each
-dataset, with no full-dataset training or sweep.
+The deterministic pipeline supports both datasets: back-projection, all nine
+representations, oracle labeling, z-buffer rendering, coverage-aware and
+boundary metrics, multiview projections, and comparison plots. The fixed pilot
+uses 10 images from each dataset, with no model training or full-dataset sweep.
 
-### Reproduce the main study
+### Setup and expected local data
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+The datasets and generated outputs are intentionally excluded from Git:
+
+```text
+data/
+├── nyu/       # NYUv2 RGB, depth, labels, and calibration data
+├── sunRGB/    # SUN RGB-D RGB, depth, labels, and intrinsics
+└── cat3D/     # textured OBJ/MTL object sanity check
+
+outputs/       # regenerated study artifacts; never committed
+```
+
+Validate the dataset adapters before constructing representations. A validation
+failure usually means that an RGB/depth/label file is missing, shapes are not
+aligned, or camera intrinsics are unavailable.
+
+### Main 10+10-image study
 
 ```bash
 # From this repository root
@@ -945,28 +1037,80 @@ Use `notebooks/06_catdog_asset_grids.ipynb` to view the Cat3D atlas.
 > **Observation:** Cat3D is a controlled object-level sanity check; NYUv2 and
 > SUN RGB-D remain the evidence for real RGB-D scene behavior.
 
-### How to read the metrics
+### Repository map
 
-`valid_depth` mIoU evaluates only pixels with valid depth and representation
-coverage. `full_label` mIoU counts uncovered labeled pixels as missing. Always
-read mIoU together with `valid_depth_coverage` and `valid_depth_missing_rate`;
-an identity-like point sample can have high covered-pixel accuracy while still
-covering only a small fraction of the image.
+| Location | Purpose | Start here when... |
+| --- | --- | --- |
+| `configs/` | Fixed NYUv2 and SUN RGB-D pilot settings | You want to change sample count or representation resolution |
+| `repstudy/datasets.py` | Dataset loading and alignment | A dataset cannot be found or shapes do not match |
+| `repstudy/geometry.py` | RGB-D back-projection and geometric utilities | You are learning or checking the camera geometry |
+| `repstudy/representations.py` | Construction of the nine representations | You want to understand or modify a representation |
+| `repstudy/oracle.py` | Oracle labeling and z-buffer projection | You are tracing the 3D-to-2D evaluation path |
+| `repstudy/metrics.py` | Coverage-aware semantic and boundary metrics | You want to understand a reported score |
+| `repstudy/run_study.py` | Main 10-image dataset runner | You want to regenerate the baseline study |
+| `repstudy/plot_*.py` | 2D, 3D, multiview, and analysis figures | You want to regenerate a particular visualization |
+| `repstudy/run_small_sample_experiments.py` | Rate-distortion, corruption, hybrid, and efficiency pilots | You want to reproduce follow-up experiments |
+| `notebooks/01` to `06` | Ordered visual walkthroughs | You want to learn interactively in Jupyter |
+| [`docs/representation_study_plan.md`](docs/representation_study_plan.md) | Scientific scope, coordinate convention, and evaluation tracks | You need the core protocol |
+| [`docs/representation_findings.md`](docs/representation_findings.md) | Dataset-level baseline findings | You need the concise quantitative interpretation |
+| [`docs/small_sample_experiments.md`](docs/small_sample_experiments.md) | Follow-up experiment settings and limitations | You need the rate-distortion, corruption, hybrid, or efficiency protocol |
+| `tests/test_repstudy.py` | Geometry and pipeline checks | You changed implementation code |
+
+Recommended reading order for the notebooks:
+
+1. source RGB, depth, and labels;
+2. batch overview;
+3. raw 3D representation grids;
+4. 2D oracle-projection grids;
+5. multiview projections;
+6. Cat3D object atlas.
+
+> **Observation:** The numbered notebooks teach the study in the same order as
+> the pipeline: inputs first, then geometry, projection, viewpoint behavior,
+> and finally the controlled object example.
+
+## How to read the metrics
+
+| Metric | Question it answers | Interpretation warning |
+| --- | --- | --- |
+| Full-label mIoU | How well is the complete labeled image recovered? | Uncovered labeled pixels count as missing; this is the safest dense-quality score |
+| Valid-depth mIoU | How correct are covered pixels with valid depth? | Can look excellent for a representation that covers very few pixels |
+| Coverage | What fraction of evaluable pixels receives a projection? | Must be reported beside valid-depth mIoU |
+| Missing rate | What fraction of evaluable pixels is not represented? | It is the complement of coverage on the corresponding evaluation support |
+| Boundary F1 | How well are semantic boundaries retained after projection? | Depends on the stated pixel tolerance |
+| Purity | Do grouped 3D elements mostly contain one oracle class? | Uses labels only for analysis, never to create the grouping |
+| Construction time | How long does representation building take? | Python pilot timing is comparative, not a deployment benchmark |
+| Element count | How many points, cells, regions, or leaves are stored? | Elements from different representation families have different payloads |
+| Viewpoint stability | How consistently does geometry render from virtual views? | Measures robustness of the stored visible geometry, not hidden-scene completion |
+
+Always read valid-depth mIoU together with coverage and missing rate. A sparse
+point-based representation can be almost perfect on the small set of pixels it
+covers while failing to represent most of the labeled image.
 
 > **Observation:** Full-label mIoU is the safest single dense-image summary,
 > but coverage and boundary F1 explain why that score changes.
 
-### Representation bookkeeping and repository policy
+## Scope, limitations, and repository policy
 
 Each representation keeps the source image pixels that contributed to each
 3D element. That bookkeeping is what makes deterministic oracle labeling and
-the missing-coverage measurement possible. The deterministic study uses no
-neural network. Neural fields are explained as mathematical future work only;
-they are not trained or included in the current ranking.
+the missing-coverage measurement possible.
+
+The conclusions must be read with these limits:
+
+- this is a 10-image-per-dataset pilot, not a full-dataset benchmark;
+- only measured visible geometry is represented; hidden surfaces are not
+  completed;
+- the TSDF row is a single-view surface-TSDF proxy, not a fully fused TSDF;
+- the superpoint row is a deterministic image-tile proxy, not a learned method;
+- construction time reflects this Python implementation and hardware;
+- the XYZ storage result is a lower-bound proxy, not serialized file size;
+- the adaptive hybrid has only five held-out images per dataset;
+- no neural network or neural field is trained in the reported ranking.
 
 Generated data, datasets, credentials, and checkpoints will remain outside Git.
 
-### Final recommendation
+## Final recommendation
 
 For dense RGB-D scene representation, **voxel is the recommended default** in
 this pilot. It provides full image support and the highest full-label mIoU on

@@ -3,6 +3,13 @@
 These findings summarize the fixed ten-image pilots. They are an oracle study
 of visible RGB-D geometry, not a trained segmentation benchmark.
 
+| Decision | NYUv2 | SUN RGB-D |
+| --- | --- | --- |
+| Dense default | Voxel (96.4% full-label mIoU) | Voxel (60.3% full-label mIoU) |
+| Boundary quality | Mesh (71.4% boundary F1) | Mesh (43.4% boundary F1) |
+| Compact full coverage | Superpoint (972 elements) | Superpoint (904 elements) |
+| Fast full coverage | Octree (0.46 s/image) | Octree (0.38 s/image) |
+
 ## NYUv2
 
 - Highest full-label mIoU: **Voxel** (96.4%).
